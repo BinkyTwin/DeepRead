@@ -48,6 +48,7 @@
     --highlight-blue: 207 90% 54%;
     --highlight-red: 4 90% 58%;
     --highlight-orange: 36 100% 50%;
+    --highlight-purple: 280 65% 60%;
   }
 }
 
@@ -76,5 +77,8 @@
   }
   .highlight-orange {
     background-color: hsl(var(--highlight-orange) / 0.35);
+  }
+  .highlight-purple {
+    background-color: hsl(var(--highlight-purple) / 0.35);
   }
 }

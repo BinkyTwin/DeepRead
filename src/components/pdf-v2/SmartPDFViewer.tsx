@@ -147,16 +147,19 @@ export function SmartPDFViewer({
         totalPages: pdfDoc.numPages,
         status: "idle",
       }));
-
-      // Start OCR processing if service is available
-      if (ocrServiceStatus?.available) {
-        processAllPages(pdfDoc);
-      }
     } catch (error) {
       console.error("Failed to load PDF:", error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfUrl, ocrServiceStatus?.available]);
+  }, [pdfUrl]);
+
+  // Start OCR when both PDF and OCR service are ready
+  useEffect(() => {
+    if (pdf && ocrServiceStatus?.available && ocrStatus.status === "idle") {
+      processAllPages(pdf);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdf, ocrServiceStatus?.available]);
 
   // Process all pages with OCR via API
   const processAllPages = useCallback(

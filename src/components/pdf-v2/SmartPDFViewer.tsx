@@ -6,17 +6,18 @@ import { PageLayout, TextSelection, OCRStatus } from "@/lib/ocr/types";
 import SmartTextLayer from "./SmartTextLayer";
 import SelectionToolbar from "./SelectionToolbar";
 import { renderPageToImage } from "@/lib/ocr/page-to-image";
-import {
-  extractTextWithOlmOCR,
-  checkLMStudioAvailable,
-} from "@/lib/ocr/olmocr-client";
-import { parseOCRToPageLayout } from "@/lib/ocr/layout-parser";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // PDF.js types - see src/types/pdfjs.d.ts for global declarations
 import type { PDFDocumentProxy } from "@/types/pdfjs.d";
+
+interface OCRServiceStatus {
+  available: boolean;
+  provider: string;
+  model: string;
+}
 
 interface SmartPDFViewerProps {
   /** URL of the PDF file */
@@ -41,7 +42,7 @@ interface SmartPDFViewerProps {
  * SmartPDFViewer
  *
  * A next-generation PDF viewer with:
- * - OCR-based text extraction (olmOCR via LMStudio)
+ * - OCR-based text extraction (olmOCR via DeepInfra)
  * - HTML-native text rendering
  * - Inline translation
  * - Precise highlighting
@@ -77,9 +78,8 @@ export function SmartPDFViewer({
     currentPage: 0,
     status: "idle",
   });
-  const [lmStudioAvailable, setLmStudioAvailable] = useState<boolean | null>(
-    null,
-  );
+  const [ocrServiceStatus, setOcrServiceStatus] =
+    useState<OCRServiceStatus | null>(null);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -87,13 +87,22 @@ export function SmartPDFViewer({
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const pdfjsLoadedRef = useRef(false);
 
-  // Check LMStudio availability on mount
+  // Check OCR service availability on mount
   useEffect(() => {
-    const check = async () => {
-      const available = await checkLMStudioAvailable();
-      setLmStudioAvailable(available);
+    const checkOCRService = async () => {
+      try {
+        const response = await fetch("/api/ocr");
+        if (response.ok) {
+          const status: OCRServiceStatus = await response.json();
+          setOcrServiceStatus(status);
+        } else {
+          setOcrServiceStatus({ available: false, provider: "", model: "" });
+        }
+      } catch {
+        setOcrServiceStatus({ available: false, provider: "", model: "" });
+      }
     };
-    check();
+    checkOCRService();
   }, []);
 
   // Load PDF.js from CDN
@@ -113,6 +122,7 @@ export function SmartPDFViewer({
     return () => {
       script.remove();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load PDF when URL changes
@@ -138,19 +148,20 @@ export function SmartPDFViewer({
         status: "idle",
       }));
 
-      // Start OCR processing
-      if (lmStudioAvailable) {
+      // Start OCR processing if service is available
+      if (ocrServiceStatus?.available) {
         processAllPages(pdfDoc);
       }
     } catch (error) {
       console.error("Failed to load PDF:", error);
     }
-  }, [pdfUrl, lmStudioAvailable]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfUrl, ocrServiceStatus?.available]);
 
-  // Process all pages with OCR
+  // Process all pages with OCR via API
   const processAllPages = useCallback(
     async (pdfDoc: PDFDocumentProxy) => {
-      if (!lmStudioAvailable) return;
+      if (!ocrServiceStatus?.available) return;
 
       setOcrStatus((prev) => ({
         ...prev,
@@ -170,24 +181,26 @@ export function SmartPDFViewer({
           // Render page to image
           const imageResult = await renderPageToImage(pdfDoc, pageNum);
 
-          // Extract text with OCR
-          const ocrResult = await extractTextWithOlmOCR({
-            image: imageResult.imageBase64,
-            metadata: {
+          // Call OCR API
+          const response = await fetch("/api/ocr", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image: imageResult.imageBase64,
               pageNumber: pageNum,
               totalPages: pdfDoc.numPages,
               width: imageResult.width,
               height: imageResult.height,
-            },
+            }),
           });
 
-          // Parse OCR output to layout
-          const layout = parseOCRToPageLayout(
-            ocrResult.markdown,
-            pageNum,
-            imageResult.width,
-            imageResult.height,
-          );
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || "OCR failed");
+          }
+
+          const result = await response.json();
+          const layout: PageLayout = result.layout;
 
           layouts.set(pageNum, layout);
 
@@ -207,7 +220,7 @@ export function SmartPDFViewer({
         status: "completed",
       }));
     },
-    [lmStudioAvailable],
+    [ocrServiceStatus?.available],
   );
 
   // Render canvas background for a page
@@ -325,11 +338,17 @@ export function SmartPDFViewer({
             </div>
           )}
 
-          {lmStudioAvailable === false && (
+          {ocrServiceStatus?.available === false && (
             <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-4 w-4" />
-              <span className="text-sm">LMStudio not available</span>
+              <span className="text-sm">OCR service not available</span>
             </div>
+          )}
+
+          {ocrServiceStatus?.available && ocrStatus.status === "idle" && (
+            <span className="text-xs text-muted-foreground">
+              {ocrServiceStatus.provider}: {ocrServiceStatus.model}
+            </span>
           )}
         </div>
       </div>

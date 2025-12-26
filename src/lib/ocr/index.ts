@@ -1,7 +1,7 @@
 /**
  * OCR Module
  *
- * Text extraction from PDF pages using OCR LLM (olmOCR via LMStudio)
+ * Text extraction from PDF pages using OCR LLM (olmOCR via DeepInfra)
  */
 
 // Types
@@ -15,10 +15,9 @@ export type {
   TextSelection,
 } from "./types";
 
-// olmOCR Client
+// olmOCR Client (DeepInfra)
 export {
-  checkLMStudioAvailable,
-  getAvailableModels,
+  checkDeepInfraAvailable,
   extractTextWithOlmOCR,
   extractTextFromPages,
   createOlmOCRClient,

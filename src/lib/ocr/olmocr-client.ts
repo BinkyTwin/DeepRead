@@ -1,21 +1,19 @@
 /**
- * olmOCR Client for LMStudio
+ * olmOCR Client for DeepInfra
  *
- * Connects to a local LMStudio instance running olmOCR-2-7B model
+ * Connects to DeepInfra API running olmOCR-2-7B-1025 model
  * API compatible with OpenAI /v1/chat/completions
  *
- * @see https://jonathansoma.com/words/olmocr-on-macos-with-lm-studio.html
+ * @see https://deepinfra.com/allenai/olmOCR-2-7B-1025/api
  */
 
 import { OlmOCRRequest, OlmOCRResponse } from "./types";
 
-const DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1";
-const DEFAULT_MODEL = "allenai/olmocr-2-7b";
+const DEEPINFRA_URL = "https://api.deepinfra.com/v1/openai";
 
-interface LMStudioConfig {
-  baseUrl?: string;
+interface DeepInfraConfig {
+  apiKey?: string;
   model?: string;
-  apiKey?: string; // Default "lm-studio" for local
 }
 
 interface ChatCompletionResponse {
@@ -58,16 +56,20 @@ Do not include any commentary or explanations, only the extracted text.`;
 }
 
 /**
- * Check if LMStudio is available
+ * Check if DeepInfra API is available
+ * Server-side only - requires API key
  */
-export async function checkLMStudioAvailable(
-  baseUrl: string = DEFAULT_LMSTUDIO_URL,
+export async function checkDeepInfraAvailable(
+  apiKey?: string,
 ): Promise<boolean> {
+  const key = apiKey || process.env.DEEPINFRA_API;
+  if (!key) return false;
+
   try {
-    const response = await fetch(`${baseUrl}/models`, {
+    const response = await fetch(`${DEEPINFRA_URL}/models`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer lm-studio`,
+        Authorization: `Bearer ${key}`,
       },
     });
     return response.ok;
@@ -77,44 +79,26 @@ export async function checkLMStudioAvailable(
 }
 
 /**
- * Get available models from LMStudio
- */
-export async function getAvailableModels(
-  baseUrl: string = DEFAULT_LMSTUDIO_URL,
-): Promise<string[]> {
-  try {
-    const response = await fetch(`${baseUrl}/models`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer lm-studio`,
-      },
-    });
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    return data.data?.map((m: { id: string }) => m.id) || [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Extract text from an image using olmOCR via LMStudio
+ * Extract text from an image using olmOCR via DeepInfra
+ * Server-side only - requires API key
  *
  * @param request - Image and metadata for OCR
- * @param config - LMStudio configuration
+ * @param config - DeepInfra configuration
  * @returns Markdown text extracted from the image
  */
 export async function extractTextWithOlmOCR(
   request: OlmOCRRequest,
-  config: LMStudioConfig = {},
+  config: DeepInfraConfig = {},
 ): Promise<OlmOCRResponse> {
-  const {
-    baseUrl = DEFAULT_LMSTUDIO_URL,
-    model = DEFAULT_MODEL,
-    apiKey = "lm-studio",
-  } = config;
+  const apiKey = config.apiKey || process.env.DEEPINFRA_API;
+  const model =
+    config.model || process.env.DEEPINFRA_MODEL || "allenai/olmOCR-2-7B-1025";
+
+  if (!apiKey) {
+    throw new Error(
+      "DeepInfra API key is required. Set DEEPINFRA_API env variable.",
+    );
+  }
 
   // Ensure image is properly formatted as data URL
   const imageUrl = request.image.startsWith("data:")
@@ -146,7 +130,7 @@ export async function extractTextWithOlmOCR(
     temperature: 0, // Deterministic output for OCR
   };
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetch(`${DEEPINFRA_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -158,7 +142,7 @@ export async function extractTextWithOlmOCR(
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
-      `LMStudio OCR failed: ${response.status} ${response.statusText} - ${errorText}`,
+      `DeepInfra OCR failed: ${response.status} ${response.statusText} - ${errorText}`,
     );
   }
 
@@ -184,7 +168,7 @@ export async function extractTextWithOlmOCR(
 export async function extractTextFromPages(
   pages: { pageNumber: number; imageBase64: string }[],
   totalPages: number,
-  config: LMStudioConfig = {},
+  config: DeepInfraConfig = {},
   onProgress?: (pageNumber: number, total: number) => void,
 ): Promise<Map<number, OlmOCRResponse>> {
   const results = new Map<number, OlmOCRResponse>();
@@ -216,10 +200,9 @@ export async function extractTextFromPages(
 /**
  * Create a client instance with pre-configured settings
  */
-export function createOlmOCRClient(config: LMStudioConfig = {}) {
+export function createOlmOCRClient(config: DeepInfraConfig = {}) {
   return {
-    checkAvailable: () => checkLMStudioAvailable(config.baseUrl),
-    getModels: () => getAvailableModels(config.baseUrl),
+    checkAvailable: () => checkDeepInfraAvailable(config.apiKey),
     extractText: (request: OlmOCRRequest) =>
       extractTextWithOlmOCR(request, config),
     extractPages: (

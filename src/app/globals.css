@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Dark alpha-like palette - DARK MODE ONLY */
+    --background: 220 20% 7%;
+    --foreground: 0 0% 95%;
+
+    --card: 220 20% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 220 20% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 15 90% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 15% 18%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 220 15% 20%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 220 15% 18%;
+    --accent-foreground: 0 0% 95%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 20%;
+    --ring: 15 90% 55%;
+
+    --radius: 0.5rem;
+
+    /* Charts */
+    --chart-1: 15 90% 55%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    /* Highlights for citations */
+    --highlight-yellow: 54 100% 62%;
+    --highlight-green: 122 39% 49%;
+    --highlight-blue: 207 90% 54%;
+    --highlight-red: 4 90% 58%;
+    --highlight-orange: 36 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Highlight utilities for citations */
+@layer utilities {
+  .highlight-yellow {
+    background-color: hsl(var(--highlight-yellow) / 0.35);
+  }
+  .highlight-green {
+    background-color: hsl(var(--highlight-green) / 0.35);
+  }
+  .highlight-blue {
+    background-color: hsl(var(--highlight-blue) / 0.35);
+  }
+  .highlight-red {
+    background-color: hsl(var(--highlight-red) / 0.35);
+  }
+  .highlight-orange {
+    background-color: hsl(var(--highlight-orange) / 0.35);
+  }
+}

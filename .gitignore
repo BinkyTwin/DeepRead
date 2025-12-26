@@ -1,1 +1,48 @@
+# Environment variables
 .env
+.env.local
+.env.*.local
+
+# Claude Code - Local settings only (shared config is tracked)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.venv/
+venv/
+ENV/
+
+# Node
+node_modules/
+dist/
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Uploads and temp files
+uploads/
+*.pdf
+!test-doc/*.pdf
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build outputs
+build/
+*.egg-info/
+.next/
+out/
+
+# Next.js
+next-env.d.ts

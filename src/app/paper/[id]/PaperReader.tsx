@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SelectionPopover } from "@/components/pdf/SelectionPopover";
@@ -16,6 +17,7 @@ import type { Citation } from "@/types/citation";
 import type { TextItem } from "@/types/pdf";
 import type { Highlight, HighlightColor } from "@/types/highlight";
 import type { SelectionData } from "@/components/pdf/PDFViewer";
+import type { TextSelection } from "@/lib/ocr/types";
 
 // Dynamic import of PDFViewer to avoid SSR issues
 const PDFViewer = dynamic(
@@ -32,12 +34,37 @@ const PDFViewer = dynamic(
   },
 );
 
+// Dynamic import of SmartPDFViewer (v2 with OCR)
+const SmartPDFViewer = dynamic(
+  () =>
+    import("@/components/pdf-v2/SmartPDFViewer").then(
+      (mod) => mod.SmartPDFViewer,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex flex-col h-full bg-muted/30 p-4">
+        <div className="space-y-4">
+          <Skeleton className="h-[800px] w-full" />
+          <div className="text-center text-sm text-muted-foreground">
+            Chargement du Smart PDF Viewer...
+          </div>
+        </div>
+      </div>
+    ),
+  },
+);
+
 interface PaperReaderProps {
   paper: PaperWithPages;
   pdfUrl: string;
 }
 
 export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
+  // Check for v2 feature flag: ?viewer=v2
+  const searchParams = useSearchParams();
+  const useSmartViewer = searchParams.get("viewer") === "v2";
+
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -169,6 +196,54 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     setSelection(null);
   }, [selection]);
 
+  // === Smart Viewer (v2) Handlers ===
+  // Note: SmartPDFViewer manages its own selection state internally
+
+  // Handle highlight from SmartPDFViewer
+  const handleSmartHighlight = useCallback(
+    async (sel: TextSelection, color: string) => {
+      try {
+        const response = await fetch("/api/highlights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paperId: paper.id,
+            pageNumber: 1, // TODO: get from selection
+            startOffset: sel.startOffset,
+            endOffset: sel.endOffset,
+            selectedText: sel.selectedText,
+            rects: [], // Smart viewer uses block-based highlighting
+            color: color as HighlightColor,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setHighlights((prev) => [...prev, data.highlight]);
+        }
+      } catch (error) {
+        console.error("Error creating highlight:", error);
+      }
+    },
+    [paper.id],
+  );
+
+  // Handle "Ask" from SmartPDFViewer
+  const handleSmartAsk = useCallback((sel: TextSelection) => {
+    setHighlightContext({
+      page: 1, // TODO: extract from block position
+      text: sel.selectedText,
+    });
+  }, []);
+
+  // Handle "Translate" from SmartPDFViewer
+  const handleSmartTranslate = useCallback((sel: TextSelection) => {
+    setTranslationModal({
+      isOpen: true,
+      text: sel.selectedText,
+    });
+  }, []);
+
   // Close popover
   const handleClosePopover = useCallback(() => {
     window.getSelection()?.removeAllRanges();
@@ -207,33 +282,46 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     <div className="h-screen flex bg-background">
       {/* PDF Viewer - 70% */}
       <div className="w-[70%] h-full border-r border-border relative">
-        <PDFViewer
-          pdfUrl={pdfUrl}
-          textItems={textItemsMap}
-          activeCitation={activeCitation}
-          onPageChange={setCurrentPage}
-          onTextSelect={handleTextSelect}
-        />
-
-        {/* Persistent highlights layer */}
-        <PersistentHighlightLayer
-          highlights={highlights}
-          pageRefs={pageRefsRef.current}
-          onHighlightClick={handleHighlightClick}
-        />
-
-        {/* Selection popover */}
-        {selection && (
-          <SelectionPopover
-            position={selection.position}
-            onHighlight={handleCreateHighlight}
-            onAsk={handleAsk}
-            onTranslate={handleTranslate}
-            onClose={handleClosePopover}
+        {useSmartViewer ? (
+          /* Smart PDF Viewer v2 - OCR-based */
+          <SmartPDFViewer
+            pdfUrl={pdfUrl}
+            onHighlight={handleSmartHighlight}
+            onAsk={handleSmartAsk}
+            onTranslate={handleSmartTranslate}
           />
+        ) : (
+          /* Classic PDF Viewer */
+          <>
+            <PDFViewer
+              pdfUrl={pdfUrl}
+              textItems={textItemsMap}
+              activeCitation={activeCitation}
+              onPageChange={setCurrentPage}
+              onTextSelect={handleTextSelect}
+            />
+
+            {/* Persistent highlights layer */}
+            <PersistentHighlightLayer
+              highlights={highlights}
+              pageRefs={pageRefsRef.current}
+              onHighlightClick={handleHighlightClick}
+            />
+
+            {/* Selection popover */}
+            {selection && (
+              <SelectionPopover
+                position={selection.position}
+                onHighlight={handleCreateHighlight}
+                onAsk={handleAsk}
+                onTranslate={handleTranslate}
+                onClose={handleClosePopover}
+              />
+            )}
+          </>
         )}
 
-        {/* Translation modal */}
+        {/* Translation modal - shared between viewers */}
         <TranslationModal
           isOpen={translationModal.isOpen}
           onClose={() => setTranslationModal({ isOpen: false, text: "" })}

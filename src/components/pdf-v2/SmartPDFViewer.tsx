@@ -14,34 +14,8 @@ import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+// Note: rehype-sanitize removed - it was stripping data URIs for images
 import type { MistralPage } from "@/lib/mistral-ocr/types";
-
-// Extended schema to allow tables and common HTML elements
-const sanitizeSchema = {
-  ...defaultSchema,
-  tagNames: [
-    ...(defaultSchema.tagNames || []),
-    "table",
-    "thead",
-    "tbody",
-    "tr",
-    "th",
-    "td",
-    "colgroup",
-    "col",
-    "figure",
-    "figcaption",
-  ],
-  attributes: {
-    ...defaultSchema.attributes,
-    table: ["className"],
-    th: ["colspan", "rowspan", "className"],
-    td: ["colspan", "rowspan", "className"],
-    a: ["href", "title", "target", "rel"],
-    img: ["src", "alt", "title", "width", "height"],
-  },
-};
 
 interface MistralServiceStatus {
   available: boolean;
@@ -251,7 +225,6 @@ export function SmartPDFViewer({
               page={page}
               scale={scale}
               pageNumber={page.index + 1}
-              totalPages={pages.length}
             />
           ))}
         </div>
@@ -261,225 +234,222 @@ export function SmartPDFViewer({
 }
 
 /**
- * Page Canvas Component - Renders a page like a document canvas
+ * Page Canvas Component - Renders a page like real A4 paper
  */
 interface PageCanvasProps {
   page: MistralPage;
   scale: number;
   pageNumber: number;
-  totalPages: number;
 }
 
-function PageCanvas({ page, scale, pageNumber, totalPages }: PageCanvasProps) {
+// A4 dimensions in pixels at 96 DPI (standard screen)
+const A4_WIDTH_PX = 794; // 210mm at 96 DPI
+const A4_HEIGHT_PX = 1123; // 297mm at 96 DPI
+
+function PageCanvas({ page, scale, pageNumber }: PageCanvasProps) {
   // Build image map for replacing markdown image references
   const imageMap = useMemo(() => {
     const map = new Map<string, string>();
     if (page.images) {
       for (const img of page.images) {
         if (img.image_base64) {
-          // Map both with and without extension
+          // Map multiple variations of the image name
           const baseName = img.id.replace(/\.(jpeg|jpg|png|gif|webp)$/i, "");
-          map.set(img.id, `data:image/jpeg;base64,${img.image_base64}`);
-          map.set(baseName, `data:image/jpeg;base64,${img.image_base64}`);
-          // Also map simple patterns like img-0, img-1
-          map.set(
-            img.id.toLowerCase(),
-            `data:image/jpeg;base64,${img.image_base64}`,
-          );
+
+          // Check if base64 already has data URI prefix
+          const dataUri = img.image_base64.startsWith("data:")
+            ? img.image_base64
+            : `data:image/jpeg;base64,${img.image_base64}`;
+
+          map.set(img.id, dataUri);
+          map.set(baseName, dataUri);
+          map.set(img.id.toLowerCase(), dataUri);
+          map.set(baseName.toLowerCase(), dataUri);
+          // Handle paths like ./img-0.jpeg
+          map.set(`./${img.id}`, dataUri);
         }
       }
     }
     return map;
   }, [page.images]);
 
-  // Process markdown to replace image references with base64
-  const processedMarkdown = useMemo(() => {
-    let md = page.markdown || "";
+  // Just use the raw markdown - image resolution happens in the img component
+  const processedMarkdown = page.markdown || "";
 
-    // Replace image references with base64 data URIs
-    // Pattern: ![alt](filename) or ![](filename)
-    md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
-      // Try to find the image in our map
-      const dataUri =
-        imageMap.get(src) ||
-        imageMap.get(src.toLowerCase()) ||
-        imageMap.get(src.replace(/^\.?\//, ""));
-
-      if (dataUri) {
-        return `![${alt}](${dataUri})`;
-      }
-      // If not found, keep original (might be external URL)
-      return match;
-    });
-
-    return md;
-  }, [page.markdown, imageMap]);
-
-  // Calculate dimensions
-  const baseWidth = page.dimensions?.width || 800;
-  const baseHeight = page.dimensions?.height || 1100;
-  const dpi = page.dimensions?.dpi || 200;
-
-  // Scale to reasonable screen size (assuming 96 screen DPI)
-  const screenScale = 96 / dpi;
-  const width = baseWidth * screenScale * scale;
+  // Calculate scaled dimensions
+  const scaledWidth = A4_WIDTH_PX * scale;
+  const scaledHeight = A4_HEIGHT_PX * scale;
 
   return (
     <div
-      className="bg-white rounded shadow-2xl overflow-hidden"
+      className="relative bg-white shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-shadow hover:shadow-[0_8px_30px_rgba(0,0,0,0.4)]"
       style={{
-        width: Math.max(width, 600),
+        width: scaledWidth,
+        minHeight: scaledHeight,
         maxWidth: "95vw",
-        minHeight: 400,
       }}
     >
-      {/* Page content area */}
+      {/* Page content */}
       <article
-        className="p-8 md:p-12"
+        className="relative"
         style={{
-          fontSize: `${16 * scale}px`,
+          padding: `${48 * scale}px ${56 * scale}px`,
+          fontSize: `${14 * scale}px`,
+          lineHeight: 1.6,
         }}
       >
-        {/* Render markdown with proper typography */}
-        <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-p:text-slate-800 prose-li:text-slate-800 prose-strong:text-slate-900 prose-a:text-primary hover:prose-a:text-primary/80">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
-            components={{
-              // Custom image handling
-              img: ({ src, alt, ...props }) => {
-                // Check if we need to resolve from imageMap
-                const resolvedSrc =
-                  imageMap.get(src || "") ||
-                  imageMap.get((src || "").toLowerCase()) ||
-                  src;
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          components={{
+            // Images - resolve from imageMap and render full width
+            img: ({ src, alt }) => {
+              const originalSrc = src || "";
+              const cleanSrc = originalSrc.replace(/^\.?\//, "");
 
+              // Try to resolve from imageMap
+              const resolvedSrc =
+                imageMap.get(originalSrc) ||
+                imageMap.get(cleanSrc) ||
+                imageMap.get(originalSrc.toLowerCase()) ||
+                imageMap.get(cleanSrc.toLowerCase());
+
+              if (!resolvedSrc) {
+                // No image data available, show placeholder
                 return (
-                  <span className="block my-6">
-                    <img
-                      src={resolvedSrc}
-                      alt={alt || ""}
-                      className="max-w-full h-auto rounded-lg shadow-md mx-auto"
-                      loading="lazy"
-                      {...props}
-                    />
-                    {alt && (
-                      <span className="block text-center text-sm text-slate-500 mt-2 italic">
-                        {alt}
-                      </span>
-                    )}
+                  <span className="block my-4 p-4 bg-slate-100 text-slate-500 text-center rounded">
+                    Image: {alt || originalSrc}
                   </span>
                 );
-              },
-              // Tables with proper styling
-              table: ({ children }) => (
-                <div className="overflow-x-auto my-6 rounded-lg border border-slate-200">
-                  <table className="min-w-full divide-y divide-slate-200">
-                    {children}
-                  </table>
-                </div>
-              ),
-              thead: ({ children }) => (
-                <thead className="bg-slate-50">{children}</thead>
-              ),
-              th: ({ children }) => (
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900">
+              }
+
+              return (
+                <span className="block my-4">
+                  <img
+                    src={resolvedSrc}
+                    alt={alt || ""}
+                    className="w-full h-auto"
+                    style={{ maxWidth: "100%" }}
+                    loading="lazy"
+                  />
+                </span>
+              );
+            },
+            // Tables
+            table: ({ children }) => (
+              <div className="overflow-x-auto my-4">
+                <table className="w-full border-collapse text-[0.85em]">
                   {children}
-                </th>
-              ),
-              td: ({ children }) => (
-                <td className="px-4 py-3 text-sm text-slate-700 border-t border-slate-100">
+                </table>
+              </div>
+            ),
+            thead: ({ children }) => (
+              <thead className="bg-slate-100 border-b-2 border-slate-300">
+                {children}
+              </thead>
+            ),
+            th: ({ children }) => (
+              <th className="px-3 py-2 text-left font-semibold text-slate-900 border border-slate-200">
+                {children}
+              </th>
+            ),
+            td: ({ children }) => (
+              <td className="px-3 py-2 text-slate-700 border border-slate-200">
+                {children}
+              </td>
+            ),
+            // Headings - professional document style
+            h1: ({ children }) => (
+              <h1 className="text-[1.8em] font-bold text-slate-900 mb-4 mt-6 first:mt-0 border-b-2 border-slate-200 pb-2">
+                {children}
+              </h1>
+            ),
+            h2: ({ children }) => (
+              <h2 className="text-[1.4em] font-bold text-slate-800 mb-3 mt-5">
+                {children}
+              </h2>
+            ),
+            h3: ({ children }) => (
+              <h3 className="text-[1.2em] font-semibold text-slate-800 mb-2 mt-4">
+                {children}
+              </h3>
+            ),
+            h4: ({ children }) => (
+              <h4 className="text-[1.1em] font-semibold text-slate-700 mb-2 mt-3">
+                {children}
+              </h4>
+            ),
+            // Paragraphs
+            p: ({ children }) => (
+              <p className="text-slate-800 mb-3 text-justify">{children}</p>
+            ),
+            // Lists
+            ul: ({ children }) => (
+              <ul className="list-disc pl-5 mb-3 space-y-1 text-slate-800">
+                {children}
+              </ul>
+            ),
+            ol: ({ children }) => (
+              <ol className="list-decimal pl-5 mb-3 space-y-1 text-slate-800">
+                {children}
+              </ol>
+            ),
+            li: ({ children }) => (
+              <li className="text-slate-800">{children}</li>
+            ),
+            // Code
+            code: ({ children, className }) => {
+              const isBlock = className?.includes("language-");
+              return isBlock ? (
+                <code className="block bg-slate-100 text-slate-900 p-3 rounded text-[0.9em] font-mono overflow-x-auto">
                   {children}
-                </td>
-              ),
-              // Headings
-              h1: ({ children }) => (
-                <h1 className="text-3xl font-bold text-slate-900 mb-6 mt-8 first:mt-0">
+                </code>
+              ) : (
+                <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-[0.9em] font-mono">
                   {children}
-                </h1>
-              ),
-              h2: ({ children }) => (
-                <h2 className="text-2xl font-semibold text-slate-900 mb-4 mt-8">
-                  {children}
-                </h2>
-              ),
-              h3: ({ children }) => (
-                <h3 className="text-xl font-semibold text-slate-800 mb-3 mt-6">
-                  {children}
-                </h3>
-              ),
-              // Paragraphs
-              p: ({ children }) => (
-                <p className="text-slate-800 leading-relaxed mb-4">
-                  {children}
-                </p>
-              ),
-              // Lists
-              ul: ({ children }) => (
-                <ul className="list-disc pl-6 mb-4 space-y-2 text-slate-800">
-                  {children}
-                </ul>
-              ),
-              ol: ({ children }) => (
-                <ol className="list-decimal pl-6 mb-4 space-y-2 text-slate-800">
-                  {children}
-                </ol>
-              ),
-              li: ({ children }) => (
-                <li className="text-slate-800 leading-relaxed">{children}</li>
-              ),
-              // Code
-              code: ({ children, className }) => {
-                const isBlock = className?.includes("language-");
-                return isBlock ? (
-                  <code className="block bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto text-sm font-mono">
-                    {children}
-                  </code>
-                ) : (
-                  <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono">
-                    {children}
-                  </code>
-                );
-              },
-              pre: ({ children }) => (
-                <pre className="my-4 overflow-x-auto">{children}</pre>
-              ),
-              // Blockquote
-              blockquote: ({ children }) => (
-                <blockquote className="border-l-4 border-primary pl-4 py-2 my-4 bg-slate-50 rounded-r-lg italic text-slate-700">
-                  {children}
-                </blockquote>
-              ),
-              // Links
-              a: ({ href, children }) => (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:text-primary/80 underline underline-offset-2"
-                >
-                  {children}
-                </a>
-              ),
-              // Horizontal rule
-              hr: () => <hr className="my-8 border-slate-200" />,
-            }}
-          >
-            {processedMarkdown}
-          </ReactMarkdown>
-        </div>
+                </code>
+              );
+            },
+            pre: ({ children }) => (
+              <pre className="my-3 overflow-x-auto">{children}</pre>
+            ),
+            // Blockquote
+            blockquote: ({ children }) => (
+              <blockquote className="border-l-4 border-slate-300 pl-4 py-1 my-3 bg-slate-50 text-slate-700 italic">
+                {children}
+              </blockquote>
+            ),
+            // Links
+            a: ({ href, children }) => (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 underline"
+              >
+                {children}
+              </a>
+            ),
+            // Horizontal rule
+            hr: () => <hr className="my-6 border-slate-300" />,
+            // Strong/bold
+            strong: ({ children }) => (
+              <strong className="font-bold text-slate-900">{children}</strong>
+            ),
+            // Emphasis/italic
+            em: ({ children }) => <em className="italic">{children}</em>,
+          }}
+        >
+          {processedMarkdown}
+        </ReactMarkdown>
       </article>
 
-      {/* Page footer */}
-      <div className="border-t border-slate-200 px-8 py-3 bg-slate-50 flex justify-between items-center">
-        <span className="text-sm font-medium text-slate-600">
-          Page {pageNumber} / {totalPages}
-        </span>
-        {page.dimensions && (
-          <span className="text-xs text-slate-400">
-            {baseWidth} × {baseHeight} @ {dpi}dpi
-          </span>
-        )}
+      {/* Subtle page number at bottom */}
+      <div
+        className="absolute bottom-0 left-0 right-0 text-center pb-4 text-slate-400 text-xs"
+        style={{ fontSize: `${10 * scale}px` }}
+      >
+        {pageNumber}
       </div>
     </div>
   );

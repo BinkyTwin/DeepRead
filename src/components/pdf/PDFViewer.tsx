@@ -38,8 +38,13 @@ export function PDFViewer({
   const [scale, setScale] = useState(1.2);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pdfjsLoaded, setPdfjsLoaded] = useState(false);
+  const [pdfjsLoaded, setPdfjsLoaded] = useState(() =>
+    typeof window === "undefined" ? false : !!window.pdfjsLib,
+  );
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [pageRefsSnapshot, setPageRefsSnapshot] = useState<
+    Map<number, HTMLDivElement>
+  >(new Map());
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const renderTasks = useRef<Map<number, { cancel(): void }>>(new Map());
@@ -47,7 +52,6 @@ export function PDFViewer({
   // Load PDF.js from CDN
   useEffect(() => {
     if (window.pdfjsLib) {
-      setPdfjsLoaded(true);
       return;
     }
 
@@ -117,11 +121,12 @@ export function PDFViewer({
 
   // Cleanup on unmount
   useEffect(() => {
+    const renderTasksSnapshot = renderTasks.current;
     return () => {
       if (pdf) {
         pdf.destroy();
       }
-      renderTasks.current.forEach((task) => task.cancel());
+      renderTasksSnapshot.forEach((task) => task.cancel());
     };
   }, [pdf]);
 
@@ -336,9 +341,18 @@ export function PDFViewer({
   // Handle page ref callback
   const handlePageRef = useCallback(
     (pageNumber: number) => (element: HTMLDivElement | null) => {
+      const existing = pageRefs.current.get(pageNumber);
+
       if (element) {
+        if (existing === element) return;
         pageRefs.current.set(pageNumber, element);
+      } else if (existing) {
+        pageRefs.current.delete(pageNumber);
+      } else {
+        return;
       }
+
+      setPageRefsSnapshot(new Map(pageRefs.current));
     },
     [],
   );
@@ -466,9 +480,10 @@ export function PDFViewer({
 
       {activeCitation && textItems && (
         <HighlightLayer
+          key={`${activeCitation.page}-${activeCitation.start}-${activeCitation.end}`}
           citation={activeCitation}
           textItems={textItems}
-          pageRefs={pageRefs.current}
+          pageRefs={pageRefsSnapshot}
           scale={scale}
         />
       )}

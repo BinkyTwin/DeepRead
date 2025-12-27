@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { TextSelection } from "@/lib/ocr/types";
 import { Button } from "@/components/ui/button";
@@ -55,37 +55,44 @@ export function SelectionToolbar({
 }: SelectionToolbarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [showColors, setShowColors] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 0 : window.innerWidth,
+  );
 
-  // Update position based on selection
-  useEffect(() => {
-    if (selection.position) {
-      const { x, y } = selection.position;
-
-      // Adjust to keep toolbar in viewport
-      const toolbarWidth = 280;
-      const toolbarHeight = 48;
-      const padding = 10;
-
-      const viewportWidth = window.innerWidth;
-
-      let adjustedX = x - toolbarWidth / 2;
-      let adjustedY = y - toolbarHeight - padding;
-
-      // Keep in horizontal bounds
-      if (adjustedX < padding) adjustedX = padding;
-      if (adjustedX + toolbarWidth > viewportWidth - padding) {
-        adjustedX = viewportWidth - toolbarWidth - padding;
-      }
-
-      // If would go above viewport, show below selection
-      if (adjustedY < padding) {
-        adjustedY = y + padding + 20; // Below selection
-      }
-
-      setPosition({ x: adjustedX, y: adjustedY });
+  const position = useMemo(() => {
+    if (!selection.position) {
+      return { x: 0, y: 0 };
     }
-  }, [selection.position]);
+
+    const { x, y } = selection.position;
+
+    // Adjust to keep toolbar in viewport
+    const toolbarWidth = 280;
+    const toolbarHeight = 48;
+    const padding = 10;
+
+    let adjustedX = x - toolbarWidth / 2;
+    let adjustedY = y - toolbarHeight - padding;
+
+    // Keep in horizontal bounds
+    if (adjustedX < padding) adjustedX = padding;
+    if (adjustedX + toolbarWidth > viewportWidth - padding) {
+      adjustedX = viewportWidth - toolbarWidth - padding;
+    }
+
+    // If would go above viewport, show below selection
+    if (adjustedY < padding) {
+      adjustedY = y + padding + 20; // Below selection
+    }
+
+    return { x: adjustedX, y: adjustedY };
+  }, [selection.position, viewportWidth]);
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Handle keyboard shortcuts
   useEffect(() => {

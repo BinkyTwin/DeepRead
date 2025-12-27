@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, Children, isValidElement, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -13,7 +13,10 @@ import {
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import rehypeRaw from "rehype-raw";
+import rehypeSlug from "rehype-slug";
+import rehypeAutolinkHeadings from "rehype-autolink-headings";
 // Note: rehype-sanitize removed - it was stripping data URIs for images
 import type { MistralPage } from "@/lib/mistral-ocr/types";
 
@@ -35,6 +38,9 @@ interface SmartPDFViewerProps {
   initialScale?: number;
   className?: string;
 }
+
+const getElementChildren = (node: ReactNode): ReactNode | undefined =>
+  isValidElement<{ children?: ReactNode }>(node) ? node.props.children : undefined;
 
 /**
  * SmartPDFViewer - Mistral OCR-based PDF viewer
@@ -247,6 +253,46 @@ const A4_WIDTH_PX = 794; // 210mm at 96 DPI
 const A4_HEIGHT_PX = 1123; // 297mm at 96 DPI
 
 function PageCanvas({ page, scale, pageNumber }: PageCanvasProps) {
+  
+  // Utility function to clean and improve text punctuation
+  const cleanText = (text: string): string => {
+    if (typeof text !== 'string') return text;
+    
+    return text
+      // Fix multiple spaces
+      .replace(/\s+/g, ' ')
+      // Ensure proper spacing after punctuation
+      .replace(/([.,;:!?])(\w)/g, '$1 $2')
+      // Fix spacing around quotes
+      .replace(/(\w)(")/g, '$1 $2')
+      .replace(/(")(\w)/g, '$1 $2')
+      // Fix spacing around parentheses
+      .replace(/(\w)([()])/g, '$1 $2')
+      .replace(/([()])(\w)/g, '$1 $2')
+      // Fix spacing around brackets
+      .replace(/(\w)(\[|\])/g, '$1 $2')
+      .replace(/(\[|\])(\w)/g, '$1 $2')
+      // Fix spacing around braces
+      .replace(/(\w)(\{|\})/g, '$1 $2')
+      .replace(/(\{|\})(\w)/g, '$1 $2')
+      // Fix common OCR errors
+      .replace(/(\w)(\.)(\w)/g, '$1. $3') // Add space after period
+      .replace(/(\w)(,)(\w)/g, '$1, $3')  // Add space after comma
+      .replace(/(\w)(;)(\w)/g, '$1; $3')  // Add space after semicolon
+      .replace(/(\w)(:)(\w)/g, '$1: $3')  // Add space after colon
+      // Fix common French punctuation
+      .replace(/(\w)(\?)(\w)/g, '$1? $3') // Add space after question mark
+      .replace(/(\w)(!)(\w)/g, '$1! $3')  // Add space after exclamation mark
+      // Fix French quotes
+      .replace(/(\w)(\«)/g, '$1 $2')     // Add space before French opening quote
+      .replace(/(\»)(\w)/g, '$1 $2')     // Add space after French closing quote
+      // Fix common OCR artifacts
+      .replace(/(\w)(\')(\w)/g, '$1\'$3') // Fix apostrophes in contractions
+      .replace(/(\w)(\-\-)(\w)/g, '$1 - $3') // Fix double hyphens
+      // Trim whitespace
+      .trim();
+  };
+
   // Build image map for replacing markdown image references
   const imageMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -261,20 +307,89 @@ function PageCanvas({ page, scale, pageNumber }: PageCanvasProps) {
             ? img.image_base64
             : `data:image/jpeg;base64,${img.image_base64}`;
 
+          // Map all possible variations of the image reference
           map.set(img.id, dataUri);
           map.set(baseName, dataUri);
           map.set(img.id.toLowerCase(), dataUri);
           map.set(baseName.toLowerCase(), dataUri);
-          // Handle paths like ./img-0.jpeg
+          map.set(img.id.toUpperCase(), dataUri);
+          map.set(baseName.toUpperCase(), dataUri);
+          // Handle paths with different prefixes
           map.set(`./${img.id}`, dataUri);
+          map.set(`../${img.id}`, dataUri);
+          map.set(`/${img.id}`, dataUri);
+          map.set(`./${baseName}`, dataUri);
+          map.set(`../${baseName}`, dataUri);
+          map.set(`/${baseName}`, dataUri);
+          // Handle image references with query parameters
+          map.set(`${img.id}?raw=true`, dataUri);
+          map.set(`${baseName}?raw=true`, dataUri);
+          
+          // Handle common OCR image naming patterns
+          map.set(`img-${img.id}`, dataUri);
+          map.set(`figure-${img.id}`, dataUri);
+          map.set(`fig-${img.id}`, dataUri);
+          map.set(`image-${img.id}`, dataUri);
+          
+          // Handle image references with different extensions
+          map.set(img.id.replace(/\.(jpeg|jpg|png|gif|webp)$/i, '.png'), dataUri);
+          map.set(img.id.replace(/\.(jpeg|jpg|png|gif|webp)$/i, '.jpg'), dataUri);
+          map.set(img.id.replace(/\.(jpeg|jpg|png|gif|webp)$/i, '.jpeg'), dataUri);
+          
+          // Handle image references with size suffixes
+          map.set(img.id.replace(/(\.\w+)$/, '-small$1'), dataUri);
+          map.set(img.id.replace(/(\.\w+)$/, '-thumb$1'), dataUri);
+          map.set(img.id.replace(/(\.\w+)$/, '-large$1'), dataUri);
         }
       }
     }
     return map;
   }, [page.images]);
 
-  // Just use the raw markdown - image resolution happens in the img component
-  const processedMarkdown = page.markdown || "";
+  // Process markdown to improve fidelity
+  const processedMarkdown = useMemo(() => {
+    let markdown = page.markdown || "";
+
+    // Fix common punctuation issues
+    // Add spaces after punctuation if missing
+    markdown = markdown.replace(/([.,;:!?])(\w)/g, "$1 $2");
+    
+    // Fix missing spaces around parentheses
+    markdown = markdown.replace(/(\w)([()])/g, "$1 $2");
+    markdown = markdown.replace(/([()])(\w)/g, "$1 $2");
+
+    // Ensure proper spacing around quotes
+    markdown = markdown.replace(/(\w)(")/g, "$1 $2");
+    markdown = markdown.replace(/(")(\w)/g, "$1 $2");
+
+    // Fix common title formatting issues
+    // Ensure titles have proper spacing
+    markdown = markdown.replace(/^(#{1,6})(\S)/gm, "$1 $2");
+
+    // Fix list items with missing spaces
+    markdown = markdown.replace(/^(\*|\-|\+|\d+\.)(\S)/gm, "$1 $2");
+
+    // Fix common OCR errors in markdown structure
+    markdown = markdown.replace(/(\n#{1,6})(\S)/g, "$1 $2"); // Ensure spacing after newlines and headers
+    markdown = markdown.replace(/(\n\*|\n\-|\n\+|\n\d+\.)(\S)/g, "$1 $2"); // Ensure spacing in lists
+    
+    // Fix multiple consecutive newlines that can break markdown parsing
+    markdown = markdown.replace(/\n{3,}/g, '\n\n');
+
+    // Fix common OCR artifacts
+    markdown = markdown.replace(/\s+(\n|$)/g, '$1'); // Remove trailing spaces
+    markdown = markdown.replace(/^\s+/, ''); // Remove leading spaces
+
+    // Fix common French punctuation issues
+    markdown = markdown.replace(/(\w)(\?)(\w)/g, '$1? $3'); // Add space after question mark
+    markdown = markdown.replace(/(\w)(!)(\w)/g, '$1! $3');  // Add space after exclamation mark
+    
+    // Fix common OCR errors with French quotes
+    markdown = markdown.replace(/(\w)(\«)/g, '$1 $2');     // Add space before French opening quote
+    markdown = markdown.replace(/(\»)(\w)/g, '$1 $2');     // Add space after French closing quote
+    
+    return markdown;
+  }, [page.markdown]);
 
   // Calculate scaled dimensions
   const scaledWidth = A4_WIDTH_PX * scale;
@@ -299,145 +414,544 @@ function PageCanvas({ page, scale, pageNumber }: PageCanvasProps) {
         }}
       >
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw]}
+          remarkPlugins={[remarkGfm, remarkBreaks]}
+          rehypePlugins={[rehypeRaw, rehypeSlug, rehypeAutolinkHeadings]}
           components={{
-            // Images - resolve from imageMap and render full width
+            // Images - resolve from imageMap and render full width with better error handling
             img: ({ src, alt }) => {
-              const originalSrc = src || "";
-              const cleanSrc = originalSrc.replace(/^\.?\//, "");
+              const originalSrc = typeof src === "string" ? src : "";
+              const cleanSrc = originalSrc ? originalSrc.replace(/^\.?\//, "") : "";
 
-              // Try to resolve from imageMap
+              // Try to resolve from imageMap - more comprehensive search
               const resolvedSrc =
                 imageMap.get(originalSrc) ||
                 imageMap.get(cleanSrc) ||
                 imageMap.get(originalSrc.toLowerCase()) ||
-                imageMap.get(cleanSrc.toLowerCase());
+                imageMap.get(cleanSrc.toLowerCase()) ||
+                imageMap.get(originalSrc.toUpperCase()) ||
+                imageMap.get(cleanSrc.toUpperCase()) ||
+                imageMap.get(originalSrc.replace(/\?.*$/, "")) ||
+                imageMap.get(cleanSrc.replace(/\?.*$/, "")) ||
+                // Try to find by alt text if available
+                (alt && imageMap.get(alt)) ||
+                (alt && imageMap.get(alt.toLowerCase()));
 
               if (!resolvedSrc) {
-                // No image data available, show placeholder
+                // No image data available, show improved placeholder
+                console.warn(`Image not found: ${originalSrc}`, { alt, availableImages: Array.from(imageMap.keys()) });
                 return (
-                  <span className="block my-4 p-4 bg-slate-100 text-slate-500 text-center rounded">
-                    Image: {alt || originalSrc}
-                  </span>
+                  <div className="block my-6 p-6 bg-slate-50 border-2 border-slate-200 border-dashed text-slate-500 text-center rounded-lg">
+                    <div className="text-sm font-medium text-slate-600 mb-2">📷 IMAGE NOT AVAILABLE</div>
+                    <div className="text-xs break-words max-w-full">
+                      {alt ? (
+                        <>
+                          <div className="font-medium">Alt text:</div>
+                          <div className="mt-1">{cleanText(alt)}</div>
+                        </>
+                      ) : (
+                        originalSrc || "Unknown image reference"
+                      )}
+                    </div>
+                  </div>
                 );
               }
 
               return (
-                <span className="block my-4">
+                <div className="block my-6">
                   <img
                     src={resolvedSrc}
-                    alt={alt || ""}
-                    className="w-full h-auto"
+                    alt={alt || "Document image"}
+                    className="w-full h-auto rounded-sm shadow-sm"
                     style={{ maxWidth: "100%" }}
                     loading="lazy"
+                    onError={(e) => {
+                      console.error(`Failed to load image: ${originalSrc}`);
+                      e.currentTarget.style.display = "none";
+                    }}
                   />
-                </span>
+                </div>
               );
             },
-            // Tables
-            table: ({ children }) => (
-              <div className="overflow-x-auto my-4">
-                <table className="w-full border-collapse text-[0.85em]">
+            // Tables with improved styling and error handling
+            table: ({ children }) => {
+              // Check if table has valid content
+              const hasContent = Children.count(children) > 0;
+              
+              if (!hasContent) {
+                return (
+                  <div className="my-6 p-4 bg-slate-50 border border-slate-200 rounded-sm text-slate-500 text-center">
+                    <div className="text-sm">📊 Empty table</div>
+                  </div>
+                );
+              }
+
+              // Count actual rows to ensure table has meaningful content
+              let rowCount = 0;
+              Children.forEach(children, (child) => {
+                if (isValidElement(child) && (child.type === 'thead' || child.type === 'tbody')) {
+                  Children.forEach(getElementChildren(child), (row) => {
+                    if (isValidElement(row) && row.type === 'tr') {
+                      rowCount++;
+                    }
+                  });
+                }
+              });
+
+              if (rowCount === 0) {
+                return (
+                  <div className="my-6 p-4 bg-slate-50 border border-slate-200 rounded-sm text-slate-500 text-center">
+                    <div className="text-sm">📊 Table has no data</div>
+                  </div>
+                );
+              }
+
+              // Count cells to ensure table has meaningful content
+              let cellCount = 0;
+              Children.forEach(children, (child) => {
+                if (isValidElement(child) && (child.type === 'thead' || child.type === 'tbody')) {
+                  Children.forEach(getElementChildren(child), (row) => {
+                    if (isValidElement(row) && row.type === 'tr') {
+                      Children.forEach(getElementChildren(row), (cell) => {
+                        if (isValidElement(cell) && (cell.type === 'th' || cell.type === 'td')) {
+                          cellCount++;
+                        }
+                      });
+                    }
+                  });
+                }
+              });
+
+              if (cellCount === 0) {
+                return (
+                  <div className="my-6 p-4 bg-slate-50 border border-slate-200 rounded-sm text-slate-500 text-center">
+                    <div className="text-sm">📊 Table has no cells</div>
+                  </div>
+                );
+              }
+
+              // Count non-empty cells to ensure table has meaningful content
+              let nonEmptyCellCount = 0;
+              Children.forEach(children, (child) => {
+                if (isValidElement(child) && (child.type === 'thead' || child.type === 'tbody')) {
+                  Children.forEach(getElementChildren(child), (row) => {
+                    if (isValidElement(row) && row.type === 'tr') {
+                      Children.forEach(getElementChildren(row), (cell) => {
+                        if (isValidElement(cell) && (cell.type === 'th' || cell.type === 'td')) {
+                          const cellContent = getElementChildren(cell);
+                          const hasCellContent = cellContent && cellContent.toString().trim().length > 0;
+                          if (hasCellContent) {
+                            nonEmptyCellCount++;
+                          }
+                        }
+                      });
+                    }
+                  });
+                }
+              });
+
+              if (nonEmptyCellCount === 0) {
+                return (
+                  <div className="my-6 p-4 bg-slate-50 border border-slate-200 rounded-sm text-slate-500 text-center">
+                    <div className="text-sm">📊 Table has no content</div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="overflow-x-auto my-6 border border-slate-200 rounded-sm">
+                  <table className="w-full border-collapse text-[0.9em]">
+                    {children}
+                  </table>
+                </div>
+              );
+            },
+            thead: ({ children }) => {
+              const hasContent = Children.count(children) > 0;
+              
+              if (!hasContent) {
+                return null;
+              }
+
+              // Count actual header cells to ensure thead has meaningful content
+              let cellCount = 0;
+              Children.forEach(children, (child) => {
+                if (isValidElement(child) && child.type === 'tr') {
+                  Children.forEach(getElementChildren(child), (cell) => {
+                    if (isValidElement(cell) && cell.type === 'th') {
+                      cellCount++;
+                    }
+                  });
+                }
+              });
+
+              if (cellCount === 0) {
+                return null;
+              }
+
+              // Count non-empty header cells to ensure thead has meaningful content
+              let nonEmptyCellCount = 0;
+              Children.forEach(children, (child) => {
+                if (isValidElement(child) && child.type === 'tr') {
+                  Children.forEach(getElementChildren(child), (cell) => {
+                    if (isValidElement(cell) && cell.type === 'th') {
+                      const cellContent = getElementChildren(cell);
+                      const hasCellContent = cellContent && cellContent.toString().trim().length > 0;
+                      if (hasCellContent) {
+                        nonEmptyCellCount++;
+                      }
+                    }
+                  });
+                }
+              });
+
+              if (nonEmptyCellCount === 0) {
+                return null;
+              }
+
+              return (
+                <thead className="bg-slate-50 border-b border-slate-300">
                   {children}
-                </table>
-              </div>
-            ),
-            thead: ({ children }) => (
-              <thead className="bg-slate-100 border-b-2 border-slate-300">
-                {children}
-              </thead>
-            ),
-            th: ({ children }) => (
-              <th className="px-3 py-2 text-left font-semibold text-slate-900 border border-slate-200">
-                {children}
-              </th>
-            ),
-            td: ({ children }) => (
-              <td className="px-3 py-2 text-slate-700 border border-slate-200">
-                {children}
-              </td>
-            ),
-            // Headings - professional document style
-            h1: ({ children }) => (
-              <h1 className="text-[1.8em] font-bold text-slate-900 mb-4 mt-6 first:mt-0 border-b-2 border-slate-200 pb-2">
-                {children}
-              </h1>
-            ),
-            h2: ({ children }) => (
-              <h2 className="text-[1.4em] font-bold text-slate-800 mb-3 mt-5">
-                {children}
-              </h2>
-            ),
-            h3: ({ children }) => (
-              <h3 className="text-[1.2em] font-semibold text-slate-800 mb-2 mt-4">
-                {children}
-              </h3>
-            ),
-            h4: ({ children }) => (
-              <h4 className="text-[1.1em] font-semibold text-slate-700 mb-2 mt-3">
-                {children}
-              </h4>
-            ),
-            // Paragraphs
-            p: ({ children }) => (
-              <p className="text-slate-800 mb-3 text-justify">{children}</p>
-            ),
-            // Lists
-            ul: ({ children }) => (
-              <ul className="list-disc pl-5 mb-3 space-y-1 text-slate-800">
-                {children}
-              </ul>
-            ),
-            ol: ({ children }) => (
-              <ol className="list-decimal pl-5 mb-3 space-y-1 text-slate-800">
-                {children}
-              </ol>
-            ),
-            li: ({ children }) => (
-              <li className="text-slate-800">{children}</li>
-            ),
-            // Code
+                </thead>
+              );
+            },
+            th: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <th className="px-4 py-3 text-left font-semibold text-slate-900 border border-slate-200 bg-slate-50 sticky top-0 hyphens-auto">
+                  {hasContent ? formattedContent : <span className="text-slate-400 italic">N/A</span>}
+                </th>
+              );
+            },
+            td: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <td className="px-4 py-3 text-slate-800 border border-slate-200 hyphens-auto">
+                  {hasContent ? formattedContent : <span className="text-slate-400 italic">—</span>}
+                </td>
+              );
+            },
+            // Headings - professional document style with improved hierarchy
+            h1: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty headings
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <h1 className="text-[2em] font-bold text-slate-900 mb-6 mt-8 first:mt-0 border-b-2 border-slate-300 pb-3 leading-tight">
+                  {formattedContent}
+                </h1>
+              );
+            },
+            h2: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty headings
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <h2 className="text-[1.6em] font-bold text-slate-800 mb-4 mt-6 border-b border-slate-200 pb-1 leading-snug">
+                  {formattedContent}
+                </h2>
+              );
+            },
+            h3: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty headings
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <h3 className="text-[1.3em] font-semibold text-slate-800 mb-3 mt-5 font-medium">
+                  {formattedContent}
+                </h3>
+              );
+            },
+            h4: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty headings
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <h4 className="text-[1.15em] font-semibold text-slate-700 mb-2 mt-4 font-medium italic">
+                  {formattedContent}
+                </h4>
+              );
+            },
+            h5: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty headings
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <h5 className="text-[1.05em] font-medium text-slate-700 mb-2 mt-3">
+                  {formattedContent}
+                </h5>
+              );
+            },
+            h6: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty headings
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <h6 className="text-[1em] font-medium text-slate-600 mb-1 mt-2">
+                  {formattedContent}
+                </h6>
+              );
+            },
+            // Paragraphs with improved typography
+            p: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty paragraphs
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <p className="text-slate-800 mb-4 text-justify leading-relaxed hyphens-auto">
+                  {formattedContent}
+                </p>
+              );
+            },
+            // Lists with better spacing and styling
+            ul: ({ children }) => {
+              const hasContent = Children.count(children) > 0;
+              
+              if (!hasContent) {
+                return null; // Don't render empty lists
+              }
+
+              return (
+                <ul className="list-disc pl-6 mb-4 space-y-2 text-slate-800 marker:text-slate-500">
+                  {children}
+                </ul>
+              );
+            },
+            ol: ({ children }) => {
+              const hasContent = Children.count(children) > 0;
+              
+              if (!hasContent) {
+                return null; // Don't render empty lists
+              }
+
+              return (
+                <ol className="list-decimal pl-6 mb-4 space-y-2 text-slate-800 marker:text-slate-500 marker:font-medium">
+                  {children}
+                </ol>
+              );
+            },
+            li: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty list items
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <li className="text-slate-800 mb-1 leading-relaxed hyphens-auto">
+                  {formattedContent}
+                </li>
+              );
+            },
+            // Code blocks with improved styling
             code: ({ children, className }) => {
               const isBlock = className?.includes("language-");
+              const content = typeof children === 'string' ? children.trim() : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty code blocks
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
               return isBlock ? (
-                <code className="block bg-slate-100 text-slate-900 p-3 rounded text-[0.9em] font-mono overflow-x-auto">
-                  {children}
+                <code className="block bg-slate-900 text-slate-50 p-4 rounded-md text-[0.85em] font-mono overflow-x-auto shadow-sm">
+                  {formattedContent}
                 </code>
               ) : (
-                <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-[0.9em] font-mono">
-                  {children}
+                <code className="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[0.9em] font-mono border border-slate-200">
+                  {formattedContent}
                 </code>
               );
             },
-            pre: ({ children }) => (
-              <pre className="my-3 overflow-x-auto">{children}</pre>
-            ),
-            // Blockquote
-            blockquote: ({ children }) => (
-              <blockquote className="border-l-4 border-slate-300 pl-4 py-1 my-3 bg-slate-50 text-slate-700 italic">
-                {children}
-              </blockquote>
-            ),
-            // Links
-            a: ({ href, children }) => (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 underline"
-              >
-                {children}
-              </a>
-            ),
-            // Horizontal rule
-            hr: () => <hr className="my-6 border-slate-300" />,
-            // Strong/bold
-            strong: ({ children }) => (
-              <strong className="font-bold text-slate-900">{children}</strong>
-            ),
-            // Emphasis/italic
-            em: ({ children }) => <em className="italic">{children}</em>,
+            pre: ({ children }) => {
+              const hasContent = Children.count(children) > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty pre elements
+              }
+
+              return (
+                <pre className="my-4 overflow-x-auto rounded-md">{children}</pre>
+              );
+            },
+            // Blockquote with improved styling
+            blockquote: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty blockquotes
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <blockquote className="border-l-4 border-blue-300 pl-5 py-2 my-4 bg-blue-50 text-slate-800 not-italic rounded-r-md hyphens-auto">
+                  {formattedContent}
+                </blockquote>
+              );
+            },
+            // Links with improved styling
+            a: ({ href, children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+              const hasValidHref = href && href.toString().trim().length > 0 && href !== '#';
+
+              if (!hasContent || !hasValidHref) {
+                return null; // Don't render empty or invalid links
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors duration-150 break-words"
+                >
+                  {formattedContent}
+                </a>
+              );
+            },
+            // Horizontal rule with improved styling
+            hr: () => {
+              // Always render hr as it's a structural element
+              return <hr className="my-8 border-slate-300 border-t-2" />;
+            },
+            // Strong/bold with improved styling
+            strong: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty strong elements
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <strong className="font-bold text-slate-900 tracking-wide hyphens-auto">
+                  {formattedContent}
+                </strong>
+              );
+            },
+            // Emphasis/italic with improved styling
+            em: ({ children }) => {
+              const content = typeof children === 'string' ? cleanText(children) : children;
+              const hasContent = content && content.toString().trim().length > 0;
+
+              if (!hasContent) {
+                return null; // Don't render empty em elements
+              }
+
+              // Ensure content is properly formatted
+              const formattedContent = isValidElement(content) 
+                ? content 
+                : cleanText(String(content ?? ""));
+
+              return (
+                <em className="italic text-slate-700 font-medium hyphens-auto">
+                  {formattedContent}
+                </em>
+              );
+            },
           }}
         >
           {processedMarkdown}

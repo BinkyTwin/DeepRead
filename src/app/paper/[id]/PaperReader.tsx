@@ -77,6 +77,9 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     text: string;
   }>({ isOpen: false, text: "" });
   const pageRefsRef = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [pageRefsSnapshot, setPageRefsSnapshot] = useState<
+    Map<number, HTMLDivElement>
+  >(new Map());
 
   // Build text items map from paper pages
   const textItemsMap = useMemo(() => {
@@ -217,15 +220,25 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     // We'll update this when PDFViewer renders pages
     const observer = new MutationObserver(() => {
       const pages = document.querySelectorAll("[data-page-number]");
+      let changed = false;
+
       pages.forEach((page) => {
         const pageNumber = parseInt(
           (page as HTMLElement).dataset.pageNumber || "0",
           10,
         );
         if (pageNumber > 0) {
-          pageRefsRef.current.set(pageNumber, page as HTMLDivElement);
+          const existing = pageRefsRef.current.get(pageNumber);
+          if (existing !== page) {
+            pageRefsRef.current.set(pageNumber, page as HTMLDivElement);
+            changed = true;
+          }
         }
       });
+
+      if (changed) {
+        setPageRefsSnapshot(new Map(pageRefsRef.current));
+      }
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
@@ -254,7 +267,7 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
             {/* Persistent highlights layer */}
             <PersistentHighlightLayer
               highlights={highlights}
-              pageRefs={pageRefsRef.current}
+              pageRefs={pageRefsSnapshot}
               onHighlightClick={handleHighlightClick}
             />
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { offsetsToRects } from "@/lib/highlight-renderer";
 import type { Citation } from "@/types/citation";
 import type { TextItem, HighlightRect } from "@/types/pdf";
@@ -17,33 +17,28 @@ export function HighlightLayer({
   textItems,
   pageRefs,
 }: HighlightLayerProps) {
-  const [rects, setRects] = useState<HighlightRect[]>([]);
-  const [pageElement, setPageElement] = useState<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(true);
 
-  useEffect(() => {
+  const rects = useMemo<HighlightRect[]>(() => {
     const pageTextItems = textItems.get(citation.page);
     if (!pageTextItems) {
-      setRects([]);
-      return;
+      return [];
     }
+    return offsetsToRects(citation, pageTextItems);
+  }, [citation, textItems]);
 
-    const highlightRects = offsetsToRects(citation, pageTextItems);
-    setRects(highlightRects);
+  const pageElement = useMemo(
+    () => pageRefs.get(citation.page) || null,
+    [pageRefs, citation.page],
+  );
 
-    const element = pageRefs.get(citation.page);
-    setPageElement(element || null);
-
-    // Reset visibility
-    setIsVisible(true);
-
-    // Auto-hide after 3 seconds
+  useEffect(() => {
     const timer = setTimeout(() => {
       setIsVisible(false);
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, [citation, textItems, pageRefs]);
+  }, []);
 
   if (!pageElement || rects.length === 0 || !isVisible) {
     return null;

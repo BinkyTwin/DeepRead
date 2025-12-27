@@ -1,21 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { PageLayout, TextSelection } from "@/lib/ocr/types";
-import SmartTextLayer from "./SmartTextLayer";
-import SelectionToolbar from "./SelectionToolbar";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, AlertCircle, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import ReactMarkdown from "react-markdown";
+import type { MistralPage, MistralImage } from "@/lib/mistral-ocr/types";
 
-// PDF.js types
-import type { PDFDocumentProxy } from "@/types/pdfjs.d";
-
-interface DoclingServiceStatus {
+interface MistralServiceStatus {
   available: boolean;
   provider: string;
-  url: string;
+  model: string;
 }
 
 type ProcessingStatus =
@@ -30,16 +26,6 @@ interface SmartPDFViewerProps {
   pdfUrl: string;
   /** Initial scale */
   initialScale?: number;
-  /** Callback when selection changes */
-  onSelectionChange?: (selection: TextSelection | null) => void;
-  /** Callback when user wants to highlight */
-  onHighlight?: (selection: TextSelection, color: string) => void;
-  /** Callback when user wants to ask about selection */
-  onAsk?: (selection: TextSelection) => void;
-  /** Callback when user wants to translate */
-  onTranslate?: (selection: TextSelection) => void;
-  /** Show canvas background */
-  showCanvasBackground?: boolean;
   /** CSS classes */
   className?: string;
 }
@@ -47,248 +33,119 @@ interface SmartPDFViewerProps {
 /**
  * SmartPDFViewer
  *
- * PDF viewer with Docling-based text extraction:
- * - Precise text positions via BoundingBox
- * - Native table/formula detection
- * - HTML-native text rendering
- * - Semi-transparent canvas background
+ * PDF viewer with Mistral OCR-based text extraction:
+ * - Markdown rendering for text content
+ * - Image extraction with positioning
+ * - No canvas PDF rendering (cleaner display)
  */
 export function SmartPDFViewer({
   pdfUrl,
-  initialScale = 1.2,
-  onSelectionChange,
-  onHighlight,
-  onAsk,
-  onTranslate,
-  showCanvasBackground: initialShowCanvas = true,
+  initialScale = 1,
   className,
 }: SmartPDFViewerProps) {
   // Core state
-  const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
-  const [numPages, setNumPages] = useState(0);
   const [scale, setScale] = useState(initialScale);
-  const [pageLayouts, setPageLayouts] = useState<Map<number, PageLayout>>(
-    new Map(),
-  );
-  const [currentSelection, setCurrentSelection] =
-    useState<TextSelection | null>(null);
-  const [showCanvasBackground, setShowCanvasBackground] =
-    useState(initialShowCanvas);
+  const [pages, setPages] = useState<MistralPage[]>([]);
 
   // Processing state
   const [status, setStatus] = useState<ProcessingStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [doclingStatus, setDoclingStatus] =
-    useState<DoclingServiceStatus | null>(null);
+  const [mistralStatus, setMistralStatus] =
+    useState<MistralServiceStatus | null>(null);
+  const [progress, setProgress] = useState(0);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
-  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const pdfjsLoadedRef = useRef(false);
+  const processedRef = useRef(false);
 
-  // Check Docling service availability
+  // Check Mistral service availability
   useEffect(() => {
-    const checkDocling = async () => {
+    const checkMistral = async () => {
       setStatus("checking");
       try {
-        const response = await fetch("/api/docling");
+        const response = await fetch("/api/mistral-ocr");
         if (response.ok) {
-          const data: DoclingServiceStatus = await response.json();
-          setDoclingStatus(data);
+          const data: MistralServiceStatus = await response.json();
+          setMistralStatus(data);
           if (!data.available) {
-            setErrorMessage("Docling service not running");
+            setErrorMessage("Mistral OCR not configured");
           }
         } else {
-          setDoclingStatus({ available: false, provider: "docling", url: "" });
-          setErrorMessage("Failed to check Docling service");
+          setMistralStatus({
+            available: false,
+            provider: "mistral",
+            model: "",
+          });
+          setErrorMessage("Failed to check Mistral service");
         }
       } catch {
-        setDoclingStatus({ available: false, provider: "docling", url: "" });
+        setMistralStatus({ available: false, provider: "mistral", model: "" });
         setErrorMessage("Cannot connect to API");
       }
       setStatus("idle");
     };
-    checkDocling();
+    checkMistral();
   }, []);
 
-  // Load PDF.js from CDN
-  useEffect(() => {
-    if (pdfjsLoadedRef.current || typeof window === "undefined") return;
-
-    if (window.pdfjsLib) {
-      pdfjsLoadedRef.current = true;
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.min.mjs";
-    script.type = "module";
-    script.onload = () => {
-      if (window.pdfjsLib) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.min.mjs";
-        pdfjsLoadedRef.current = true;
-      }
-    };
-    document.head.appendChild(script);
-
-    return () => {
-      script.remove();
-    };
-  }, []);
-
-  // Load PDF when URL changes
-  useEffect(() => {
-    if (!pdfUrl) return;
-
-    const loadPdf = async () => {
-      // Wait for PDF.js to load
-      let attempts = 0;
-      while (!window.pdfjsLib && attempts < 50) {
-        await new Promise((r) => setTimeout(r, 100));
-        attempts++;
-      }
-
-      if (!window.pdfjsLib) {
-        setErrorMessage("PDF.js failed to load");
-        return;
-      }
-
-      try {
-        const loadingTask = window.pdfjsLib.getDocument(pdfUrl);
-        const pdfDoc = await loadingTask.promise;
-        setPdf(pdfDoc);
-        setNumPages(pdfDoc.numPages);
-      } catch (error) {
-        console.error("Failed to load PDF:", error);
-        setErrorMessage("Failed to load PDF");
-      }
-    };
-
-    loadPdf();
-  }, [pdfUrl]);
-
-  // Process PDF with Docling when both PDF and service are ready
+  // Process PDF with Mistral when service is ready
   useEffect(() => {
     if (
-      !pdf ||
-      !doclingStatus?.available ||
+      !pdfUrl ||
+      !mistralStatus?.available ||
       status === "processing" ||
       status === "completed" ||
-      status === "error"
+      status === "error" ||
+      processedRef.current
     ) {
       return;
     }
 
-    const processWithDocling = async () => {
+    const processWithMistral = async () => {
+      processedRef.current = true;
       setStatus("processing");
       setErrorMessage(null);
+      setProgress(10);
 
       try {
-        // Call Docling API with PDF URL
-        const response = await fetch("/api/docling", {
+        // Call Mistral OCR API with PDF URL
+        const response = await fetch("/api/mistral-ocr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pdfUrl }),
+          body: JSON.stringify({
+            documentUrl: pdfUrl,
+            includeImages: true,
+          }),
         });
+
+        setProgress(50);
 
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.error || "Docling processing failed");
+          throw new Error(error.error || "Mistral OCR processing failed");
         }
 
         const result = await response.json();
+        setProgress(90);
 
-        // Convert layouts object to Map
-        const layoutsMap = new Map<number, PageLayout>();
-        for (const [pageNum, layout] of Object.entries(result.layouts)) {
-          layoutsMap.set(parseInt(pageNum, 10), layout as PageLayout);
-        }
-
-        setPageLayouts(layoutsMap);
+        setPages(result.pages || []);
         setStatus("completed");
+        setProgress(100);
       } catch (error) {
-        console.error("Docling processing failed:", error);
+        console.error("Mistral OCR processing failed:", error);
         setErrorMessage(
           error instanceof Error ? error.message : "Processing failed",
         );
         setStatus("error");
+        processedRef.current = false;
       }
     };
 
-    processWithDocling();
-  }, [pdf, doclingStatus?.available, pdfUrl, status]);
-
-  // Render canvas background for a page
-  const renderCanvasBackground = useCallback(
-    async (pageNum: number) => {
-      if (!pdf) return;
-
-      const canvas = canvasRefs.current.get(pageNum);
-      if (!canvas) return;
-
-      try {
-        const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale });
-
-        const context = canvas.getContext("2d");
-        if (!context) return;
-
-        const pixelRatio = window.devicePixelRatio || 1;
-        canvas.width = Math.floor(viewport.width * pixelRatio);
-        canvas.height = Math.floor(viewport.height * pixelRatio);
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-
-        context.scale(pixelRatio, pixelRatio);
-
-        await page.render({
-          canvasContext: context,
-          viewport,
-        }).promise;
-      } catch (error) {
-        console.error(`Failed to render page ${pageNum}:`, error);
-      }
-    },
-    [pdf, scale],
-  );
-
-  // Render all pages
-  useEffect(() => {
-    if (!pdf || !showCanvasBackground) return;
-
-    const renderPages = async () => {
-      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-        await renderCanvasBackground(pageNum);
-      }
-    };
-
-    renderPages();
-  }, [pdf, numPages, scale, showCanvasBackground, renderCanvasBackground]);
-
-  // Handle selection
-  const handleSelectionChange = useCallback(
-    (selection: TextSelection | null) => {
-      setCurrentSelection(selection);
-      onSelectionChange?.(selection);
-    },
-    [onSelectionChange],
-  );
+    processWithMistral();
+  }, [pdfUrl, mistralStatus?.available, status]);
 
   // Zoom controls
-  const handleZoomIn = () => setScale((s) => Math.min(s + 0.2, 3));
-  const handleZoomOut = () => setScale((s) => Math.max(s - 0.2, 0.5));
-
-  // Get page dimensions
-  const getPageDimensions = (pageNum: number) => {
-    const layout = pageLayouts.get(pageNum);
-    if (layout) {
-      return { width: layout.width, height: layout.height };
-    }
-    return { width: 612, height: 792 }; // Default PDF size
-  };
+  const handleZoomIn = () => setScale((s) => Math.min(s + 0.1, 2));
+  const handleZoomOut = () => setScale((s) => Math.max(s - 0.1, 0.5));
 
   return (
     <div className={cn("smart-pdf-viewer flex flex-col h-full", className)}>
@@ -307,29 +164,11 @@ export function SmartPDFViewer({
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Canvas toggle */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowCanvasBackground((v) => !v)}
-            title={
-              showCanvasBackground
-                ? "Masquer le fond PDF"
-                : "Afficher le fond PDF"
-            }
-          >
-            {showCanvasBackground ? (
-              <Eye className="h-4 w-4" />
-            ) : (
-              <EyeOff className="h-4 w-4" />
-            )}
-          </Button>
-
           {/* Status indicator */}
           {status === "checking" && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Verification...</span>
+              <span className="text-sm">Vérification Mistral...</span>
             </div>
           )}
 
@@ -337,24 +176,24 @@ export function SmartPDFViewer({
             <div className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
               <span className="text-sm text-muted-foreground">
-                Traitement Docling...
+                Traitement OCR...
               </span>
-              <Progress value={50} className="w-24" />
+              <Progress value={progress} className="w-24" />
             </div>
           )}
 
           {status === "completed" && (
             <div className="flex items-center gap-2 text-green-600">
               <CheckCircle2 className="h-4 w-4" />
-              <span className="text-sm">{numPages} pages</span>
+              <span className="text-sm">{pages.length} pages</span>
             </div>
           )}
 
-          {(status === "error" || doclingStatus?.available === false) && (
+          {(status === "error" || mistralStatus?.available === false) && (
             <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-4 w-4" />
               <span className="text-sm">
-                {errorMessage || "Docling indisponible"}
+                {errorMessage || "Mistral indisponible"}
               </span>
             </div>
           )}
@@ -363,79 +202,200 @@ export function SmartPDFViewer({
 
       {/* Pages container */}
       <div ref={containerRef} className="flex-1 overflow-auto bg-muted/50">
-        <div className="flex flex-col items-center gap-4 py-4">
-          {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
-            const { width, height } = getPageDimensions(pageNum);
-            const layout = pageLayouts.get(pageNum);
+        <div className="flex flex-col items-center gap-6 py-6 px-4">
+          {status === "processing" && pages.length === 0 && (
+            <div className="flex flex-col items-center gap-4 py-12">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <span className="text-muted-foreground">
+                Analyse du document en cours...
+              </span>
+              <Progress value={progress} className="w-48" />
+            </div>
+          )}
 
-            return (
-              <div
-                key={pageNum}
-                ref={(el) => {
-                  if (el) pageRefs.current.set(pageNum, el);
-                }}
-                className="relative bg-white shadow-lg"
-                style={{
-                  width: width * scale,
-                  height: height * scale,
-                }}
-                data-page-number={pageNum}
-              >
-                {/* Canvas background */}
-                {showCanvasBackground && (
-                  <canvas
-                    ref={(el) => {
-                      if (el) canvasRefs.current.set(pageNum, el);
-                    }}
-                    className={cn(
-                      "absolute inset-0",
-                      layout ? "opacity-30" : "opacity-100",
-                    )}
-                  />
-                )}
+          {pages.map((page) => (
+            <PageRenderer
+              key={page.index}
+              page={page}
+              scale={scale}
+              pageNumber={page.index + 1}
+              totalPages={pages.length}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-                {/* Smart text layer */}
-                {layout ? (
-                  <SmartTextLayer
-                    layout={layout}
-                    scale={scale}
-                    baseWidth={width}
-                    baseHeight={height}
-                    onSelectionChange={handleSelectionChange}
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    {status === "processing" && (
-                      <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        <span className="text-sm text-muted-foreground">
-                          Analyse en cours...
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
+/**
+ * Page Renderer Component
+ * Renders a single page with markdown content and images
+ */
+interface PageRendererProps {
+  page: MistralPage;
+  scale: number;
+  pageNumber: number;
+  totalPages: number;
+}
 
-                {/* Page number */}
-                <div className="absolute bottom-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
-                  Page {pageNum} / {numPages}
+function PageRenderer({
+  page,
+  scale,
+  pageNumber,
+  totalPages,
+}: PageRendererProps) {
+  // Calculate scaled dimensions
+  const baseWidth = page.dimensions?.width || 800;
+  const scaledWidth = baseWidth * scale;
+
+  return (
+    <div
+      className="bg-white shadow-lg rounded-sm overflow-hidden"
+      style={{
+        width: Math.max(scaledWidth, 600),
+        maxWidth: "100%",
+      }}
+    >
+      {/* Page content */}
+      <div
+        className="p-8"
+        style={{
+          fontSize: `${14 * scale}px`,
+          lineHeight: 1.6,
+        }}
+      >
+        {/* Images from Mistral */}
+        {page.images && page.images.length > 0 && (
+          <div className="mb-6">
+            {page.images.map((img) => (
+              <MistralImageRenderer key={img.id} image={img} scale={scale} />
+            ))}
+          </div>
+        )}
+
+        {/* Markdown content */}
+        <div className="prose prose-sm max-w-none dark:prose-invert">
+          <ReactMarkdown
+            components={{
+              // Custom heading styles
+              h1: ({ children }) => (
+                <h1 className="text-2xl font-bold mb-4 text-foreground">
+                  {children}
+                </h1>
+              ),
+              h2: ({ children }) => (
+                <h2 className="text-xl font-semibold mb-3 text-foreground">
+                  {children}
+                </h2>
+              ),
+              h3: ({ children }) => (
+                <h3 className="text-lg font-medium mb-2 text-foreground">
+                  {children}
+                </h3>
+              ),
+              // Custom paragraph
+              p: ({ children }) => (
+                <p className="mb-4 text-foreground leading-relaxed">
+                  {children}
+                </p>
+              ),
+              // Custom list styles
+              ul: ({ children }) => (
+                <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>
+              ),
+              ol: ({ children }) => (
+                <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>
+              ),
+              li: ({ children }) => (
+                <li className="text-foreground">{children}</li>
+              ),
+              // Custom table
+              table: ({ children }) => (
+                <div className="overflow-x-auto mb-4">
+                  <table className="min-w-full border-collapse border border-border">
+                    {children}
+                  </table>
                 </div>
-              </div>
-            );
-          })}
+              ),
+              th: ({ children }) => (
+                <th className="border border-border bg-muted px-3 py-2 text-left font-semibold">
+                  {children}
+                </th>
+              ),
+              td: ({ children }) => (
+                <td className="border border-border px-3 py-2">{children}</td>
+              ),
+              // Code blocks
+              code: ({ children, className }) => {
+                const isInline = !className;
+                return isInline ? (
+                  <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">
+                    {children}
+                  </code>
+                ) : (
+                  <code className="block bg-muted p-4 rounded overflow-x-auto font-mono text-sm">
+                    {children}
+                  </code>
+                );
+              },
+              // Blockquote
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-4 border-primary pl-4 italic text-muted-foreground mb-4">
+                  {children}
+                </blockquote>
+              ),
+            }}
+          >
+            {page.markdown}
+          </ReactMarkdown>
         </div>
       </div>
 
-      {/* Selection toolbar */}
-      {currentSelection && (
-        <SelectionToolbar
-          selection={currentSelection}
-          onHighlight={(color) => onHighlight?.(currentSelection, color)}
-          onAsk={() => onAsk?.(currentSelection)}
-          onTranslate={() => onTranslate?.(currentSelection)}
-          onClose={() => setCurrentSelection(null)}
-        />
-      )}
+      {/* Page footer */}
+      <div className="border-t border-border px-8 py-2 bg-muted/30 flex justify-between items-center">
+        <span className="text-xs text-muted-foreground">
+          Page {pageNumber} / {totalPages}
+        </span>
+        {page.dimensions && (
+          <span className="text-xs text-muted-foreground">
+            {page.dimensions.width} x {page.dimensions.height} @{" "}
+            {page.dimensions.dpi}dpi
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Mistral Image Renderer
+ * Renders an extracted image with optional positioning
+ */
+interface MistralImageRendererProps {
+  image: MistralImage;
+  scale: number;
+}
+
+function MistralImageRenderer({ image, scale }: MistralImageRendererProps) {
+  if (!image.image_base64) {
+    return null;
+  }
+
+  const width = (image.bottom_right_x - image.top_left_x) * scale;
+  const height = (image.bottom_right_y - image.top_left_y) * scale;
+
+  return (
+    <div className="my-4 flex justify-center">
+      <img
+        src={`data:image/jpeg;base64,${image.image_base64}`}
+        alt={`Image ${image.id}`}
+        className="max-w-full h-auto rounded shadow-sm"
+        style={{
+          maxWidth: Math.min(width, 800),
+          maxHeight: Math.min(height, 600),
+        }}
+      />
     </div>
   );
 }

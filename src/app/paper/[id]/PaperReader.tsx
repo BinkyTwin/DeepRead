@@ -17,7 +17,6 @@ import type { Citation } from "@/types/citation";
 import type { TextItem } from "@/types/pdf";
 import type { Highlight, HighlightColor } from "@/types/highlight";
 import type { SelectionData } from "@/components/pdf/PDFViewer";
-import type { TextSelection } from "@/lib/ocr/types";
 
 // Dynamic import of PDFViewer to avoid SSR issues
 const PDFViewer = dynamic(
@@ -197,52 +196,8 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
   }, [selection]);
 
   // === Smart Viewer (v2) Handlers ===
-  // Note: SmartPDFViewer manages its own selection state internally
-
-  // Handle highlight from SmartPDFViewer
-  const handleSmartHighlight = useCallback(
-    async (sel: TextSelection, color: string) => {
-      try {
-        const response = await fetch("/api/highlights", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            paperId: paper.id,
-            pageNumber: 1, // TODO: get from selection
-            startOffset: sel.startOffset,
-            endOffset: sel.endOffset,
-            selectedText: sel.selectedText,
-            rects: [], // Smart viewer uses block-based highlighting
-            color: color as HighlightColor,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setHighlights((prev) => [...prev, data.highlight]);
-        }
-      } catch (error) {
-        console.error("Error creating highlight:", error);
-      }
-    },
-    [paper.id],
-  );
-
-  // Handle "Ask" from SmartPDFViewer
-  const handleSmartAsk = useCallback((sel: TextSelection) => {
-    setHighlightContext({
-      page: 1, // TODO: extract from block position
-      text: sel.selectedText,
-    });
-  }, []);
-
-  // Handle "Translate" from SmartPDFViewer
-  const handleSmartTranslate = useCallback((sel: TextSelection) => {
-    setTranslationModal({
-      isOpen: true,
-      text: sel.selectedText,
-    });
-  }, []);
+  // Note: SmartPDFViewer with Mistral OCR has its own markdown-based rendering
+  // Selection/highlight functionality will be added in a future iteration
 
   // Close popover
   const handleClosePopover = useCallback(() => {
@@ -283,13 +238,8 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
       {/* PDF Viewer - 70% */}
       <div className="w-[70%] h-full border-r border-border relative">
         {useSmartViewer ? (
-          /* Smart PDF Viewer v2 - OCR-based */
-          <SmartPDFViewer
-            pdfUrl={pdfUrl}
-            onHighlight={handleSmartHighlight}
-            onAsk={handleSmartAsk}
-            onTranslate={handleSmartTranslate}
-          />
+          /* Smart PDF Viewer v2 - Mistral OCR */
+          <SmartPDFViewer pdfUrl={pdfUrl} />
         ) : (
           /* Classic PDF Viewer */
           <>

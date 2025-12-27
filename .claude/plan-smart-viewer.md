@@ -2,7 +2,7 @@
 
 > Date: 2025-12-27
 > Branch: feature/smart-pdf-viewer
-> Status: Proposition
+> Status: EN COURS - Phase 1-2 ✅ | Phase 3 🟡 | Phase 4-5 ⏳
 
 ## Inspiration: Alphaxiv
 
@@ -368,35 +368,35 @@ ALTER TABLE inline_translations ENABLE ROW LEVEL SECURITY;
 
 ## Phases d'Implementation
 
-### Phase 1: Corriger le Surlignage (Priorite CRITIQUE)
+### Phase 1: Corriger le Surlignage (Priorite CRITIQUE) ✅
 
-**Duree estimee**: 1-2 jours
+**Duree estimee**: 1-2 jours | **Status**: COMPLETE
 
-1. [ ] Corriger les classes CSS dans `TextBlock.tsx`
-2. [ ] Deplacer le rendu des highlights dans `PageContainer`
-3. [ ] Utiliser positionnement relatif (pourcentage)
-4. [ ] Tester sur v1 et v2
+1. [x] Corriger les classes CSS dans `TextBlock.tsx`
+2. [x] Deplacer le rendu des highlights dans `PageContainer` (via HighlightLayer)
+3. [x] Utiliser positionnement relatif (pourcentage)
+4. [x] Tester sur v1 et v2
 
-### Phase 2: Selection UX Amelioree
+### Phase 2: Selection UX Amelioree ✅
 
-**Duree estimee**: 1 jour
+**Duree estimee**: 1 jour | **Status**: COMPLETE
 
-1. [ ] Implementer `SelectionContextBar` amelioree
-2. [ ] Ajouter les raccourcis clavier
-3. [ ] Ameliorer le calcul des offsets de selection
+1. [x] Implementer `SelectionContextBar` amelioree
+2. [x] Ajouter les raccourcis clavier (H, T, A, C, Esc, 1-5)
+3. [x] Ameliorer le calcul des offsets de selection
 
-### Phase 3: Traduction Inline
+### Phase 3: Traduction Inline 🟡
 
-**Duree estimee**: 2 jours
+**Duree estimee**: 2 jours | **Status**: PARTIEL
 
-1. [ ] Creer composant `InlineTranslationOverlay`
-2. [ ] Ajouter stockage des traductions
-3. [ ] Implementer fonctionnalite toggle
+1. [x] Creer composant `InlineTranslationOverlay` (TranslationLayer)
+2. [ ] Ajouter stockage des traductions (Supabase)
+3. [x] Implementer fonctionnalite toggle
 4. [ ] Creer migration Supabase
 
 ### Phase 4: Systeme d'Annotations
 
-**Duree estimee**: 2-3 jours
+**Duree estimee**: 2-3 jours | **Status**: NON COMMENCE
 
 1. [ ] Creer modele de donnees Annotation
 2. [ ] Construire composant `AnnotationPopover`
@@ -406,11 +406,23 @@ ALTER TABLE inline_translations ENABLE ROW LEVEL SECURITY;
 
 ### Phase 5: Integration Citations IA
 
-**Duree estimee**: 1 jour
+**Duree estimee**: 1 jour | **Status**: NON COMMENCE
 
 1. [ ] Ameliorer animation de flash des citations
 2. [ ] Ajouter option "Sauvegarder comme highlight"
 3. [ ] Lier citations aux messages du chat
+
+### Bonus: Gestion des Highlights ✅
+
+**Status**: COMPLETE (hors plan initial)
+
+1. [x] Creer `HighlightsPanel` dans le panneau Notes
+2. [x] Navigation rapide vers un highlight (scroll to page)
+3. [x] Suppression individuelle de highlights
+4. [x] Suppression en masse (delete all) avec confirmation
+5. [x] "Demander a l'IA" depuis un highlight (switch to chat + context)
+6. [x] Groupement des highlights par page
+7. [x] API delete all (`?paperId=xxx&all=true`)
 
 ---
 
@@ -472,11 +484,11 @@ ALTER TABLE inline_translations ENABLE ROW LEVEL SECURITY;
 
 ## Checklist Pre-Implementation
 
-- [ ] Decision prise: v1, v2, ou hybride?
-- [ ] Design system tokens verifies
-- [ ] Schema database valide
-- [ ] Priorites validees avec l'equipe
-- [ ] Branch creee: `feature/smart-pdf-viewer`
+- [x] Decision prise: v1, v2, ou hybride? → **Option C: Hybride**
+- [x] Design system tokens verifies
+- [ ] Schema database valide (migrations Supabase en attente)
+- [x] Priorites validees avec l'equipe
+- [x] Branch creee: `feature/smart-pdf-viewer`
 
 ---
 

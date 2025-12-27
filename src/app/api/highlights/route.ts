@@ -137,17 +137,38 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/highlights?id=xxx
+// DELETE /api/highlights?id=xxx OR /api/highlights?paperId=xxx&all=true
 export async function DELETE(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get("id");
+    const paperId = searchParams.get("paperId");
+    const deleteAll = searchParams.get("all") === "true";
 
+    const supabase = await createClient();
+
+    // Delete all highlights for a paper
+    if (deleteAll && paperId) {
+      const { error } = await supabase
+        .from("highlights")
+        .delete()
+        .eq("paper_id", paperId);
+
+      if (error) {
+        console.error("Error deleting all highlights:", error);
+        return NextResponse.json(
+          { error: "Failed to delete highlights" },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({ success: true, deletedAll: true });
+    }
+
+    // Delete single highlight
     if (!id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
-
-    const supabase = await createClient();
 
     const { error } = await supabase.from("highlights").delete().eq("id", id);
 

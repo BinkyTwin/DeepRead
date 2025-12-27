@@ -10,6 +10,7 @@ import { PersistentHighlightLayer } from "@/components/pdf/PersistentHighlightLa
 import type { InlineTranslation } from "@/components/reader/layers";
 import { TranslationModal } from "@/components/pdf/TranslationModal";
 import { NotesPanel } from "@/components/notes/NotesPanel";
+import { HighlightsPanel } from "@/components/highlights";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageSquare, FileText } from "lucide-react";
@@ -17,7 +18,11 @@ import { offsetsToRects } from "@/lib/highlight-renderer";
 import type { PaperWithPages } from "@/types/paper";
 import type { Citation } from "@/types/citation";
 import type { TextItem } from "@/types/pdf";
-import type { Highlight, HighlightColor, HighlightRect } from "@/types/highlight";
+import type {
+  Highlight,
+  HighlightColor,
+  HighlightRect,
+} from "@/types/highlight";
 import type { SelectionData } from "@/components/pdf/PDFViewer";
 
 // Dynamic import of PDFViewer to avoid SSR issues
@@ -85,6 +90,7 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
   const [inlineTranslations, setInlineTranslations] = useState<
     InlineTranslation[]
   >([]);
+  const [activeTab, setActiveTab] = useState<"chat" | "notes">("chat");
   const pageRefsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const [pageRefsSnapshot, setPageRefsSnapshot] = useState<
     Map<number, HTMLDivElement>
@@ -239,7 +245,7 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
         rects: selectionData.rects,
       });
     },
-    []
+    [],
   );
 
   // Close popover
@@ -250,7 +256,11 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
 
   // Handle applying translation inline on the document
   const handleApplyInlineTranslation = useCallback(
-    (result: { sourceText: string; targetLanguage: string; translatedText: string }) => {
+    (result: {
+      sourceText: string;
+      targetLanguage: string;
+      translatedText: string;
+    }) => {
       if (!selection) return;
 
       // Create a new inline translation
@@ -268,22 +278,48 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
 
       setInlineTranslations((prev) => [...prev, newTranslation]);
     },
-    [selection]
+    [selection],
   );
 
   // Handle translation toggle (show/hide inline translation)
   const handleTranslationToggle = useCallback((translationId: string) => {
     setInlineTranslations((prev) =>
       prev.map((t) =>
-        t.id === translationId ? { ...t, isActive: !t.isActive } : t
-      )
+        t.id === translationId ? { ...t, isActive: !t.isActive } : t,
+      ),
     );
   }, []);
 
-  // Handle highlight click
+  // Handle highlight click - navigate to the highlight in the PDF
   const handleHighlightClick = useCallback((highlight: Highlight) => {
-    // Could open a menu to edit/delete
-    console.log("Highlight clicked:", highlight.id);
+    // Scroll to the page containing the highlight
+    const pageElement = document.querySelector(
+      `[data-page-number="${highlight.pageNumber}"]`,
+    );
+    if (pageElement) {
+      pageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      setCurrentPage(highlight.pageNumber);
+    }
+  }, []);
+
+  // Handle asking AI about a highlight - set context and switch to chat tab
+  const handleHighlightAskAI = useCallback((highlight: Highlight) => {
+    setHighlightContext({
+      page: highlight.pageNumber,
+      text: highlight.selectedText,
+    });
+    // Switch to chat tab
+    setActiveTab("chat");
+  }, []);
+
+  // Handle deleting a single highlight
+  const handleHighlightDelete = useCallback((highlightId: string) => {
+    setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
+  }, []);
+
+  // Handle deleting all highlights
+  const handleDeleteAllHighlights = useCallback(() => {
+    setHighlights([]);
   }, []);
 
   // Store page refs from PDFViewer (we need this for PersistentHighlightLayer)
@@ -384,7 +420,9 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
           isOpen={translationModal.isOpen}
           onClose={() => setTranslationModal({ isOpen: false, text: "" })}
           originalText={translationModal.text}
-          onApplyInline={useSmartViewer ? handleApplyInlineTranslation : undefined}
+          onApplyInline={
+            useSmartViewer ? handleApplyInlineTranslation : undefined
+          }
         />
       </div>
 
@@ -402,7 +440,11 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
           </p>
         </div>
 
-        <Tabs defaultValue="chat" className="flex-1 flex flex-col">
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "chat" | "notes")}
+          className="flex-1 flex flex-col"
+        >
           <TabsList className="grid w-full grid-cols-2 rounded-none border-b border-border bg-card">
             <TabsTrigger
               value="chat"
@@ -420,7 +462,7 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="chat" className="flex-1 m-0 overflow-hidden">
+          <TabsContent value="chat" className="flex-1 m-0 overflow-hidden flex">
             <ChatPanel
               paperId={paper.id}
               pages={paper.paper_pages.map((p) => ({
@@ -433,8 +475,24 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
             />
           </TabsContent>
 
-          <TabsContent value="notes" className="flex-1 m-0 overflow-hidden">
-            <NotesPanel paperId={paper.id} currentPage={currentPage} />
+          <TabsContent
+            value="notes"
+            className="flex-1 m-0 overflow-hidden flex flex-col"
+          >
+            {/* Notes section - takes available space */}
+            <div className="flex-1 overflow-hidden">
+              <NotesPanel paperId={paper.id} currentPage={currentPage} />
+            </div>
+
+            {/* Highlights section - fixed at bottom */}
+            <HighlightsPanel
+              highlights={highlights}
+              paperId={paper.id}
+              onHighlightClick={handleHighlightClick}
+              onAskAI={handleHighlightAskAI}
+              onDelete={handleHighlightDelete}
+              onDeleteAll={handleDeleteAllHighlights}
+            />
           </TabsContent>
         </Tabs>
       </div>

@@ -4,8 +4,19 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ---
 
+## 2025-12-28
+
+FIX: Hide inactive TabsContent to prevent ChatPanel split in empty state
+
 ## 2025-12-27
 
+UX: Remove large empty space in Chat panel when no messages (compact empty state)
+FIX: Make "Ask AI" from highlights panel switch to Chat tab automatically
+FIX: Correct click-outside handler in SelectionContextBar to allow Radix dropdown portals (fix highlight via menu click)
+FEATURE: Add HighlightsPanel component for managing highlights in Notes tab
+FEATURE: Add delete all highlights functionality with confirmation dialog
+FEATURE: Integrate highlights list in Notes panel with quick navigation, Ask AI, and delete actions
+REFACTOR: Extend highlights API to support bulk delete (`?paperId=xxx&all=true`)
 FEATURE: Create library page (`/library`) with document table showing title, authors, status, pages, date, and tags
 FEATURE: Add TranslationLayer for inline translations with toggle between original/translated text
 FEATURE: Implement "Apply on document" button in TranslationModal for persistent inline translations

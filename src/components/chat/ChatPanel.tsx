@@ -134,17 +134,14 @@ export function ChatPanel({
   };
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full w-full bg-background">
       {/* Messages */}
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[300px] text-center text-muted-foreground">
-              <MessageSquare className="h-12 w-12 mb-4 opacity-50" />
+            <div className="flex items-center gap-3 py-4 text-muted-foreground">
+              <MessageSquare className="h-5 w-5 opacity-50 flex-shrink-0" />
               <p className="text-sm">Posez une question sur ce paper.</p>
-              <p className="text-xs mt-1">
-                Les réponses incluront des citations cliquables.
-              </p>
             </div>
           ) : (
             messages.map((message) => (

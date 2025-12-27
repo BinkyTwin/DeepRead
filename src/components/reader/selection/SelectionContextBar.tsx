@@ -162,13 +162,30 @@ export function SelectionContextBar({
   ]);
 
   // Close when clicking outside
+  // Note: We need to check for dropdown portal elements too (data-radix-popper-content-wrapper)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (barRef.current && !barRef.current.contains(event.target as Node)) {
-        onClose();
+      const target = event.target as HTMLElement;
+
+      // Check if click is inside the bar
+      if (barRef.current && barRef.current.contains(target)) {
+        return;
       }
+
+      // Check if click is inside a Radix dropdown portal (color picker, etc.)
+      if (target.closest("[data-radix-popper-content-wrapper]")) {
+        return;
+      }
+
+      // Check if click is inside any dropdown menu content
+      if (target.closest("[role='menu']")) {
+        return;
+      }
+
+      onClose();
     };
 
+    // Use mousedown but with delay to allow click events to fire first
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
@@ -189,7 +206,7 @@ export function SelectionContextBar({
         "transition-all duration-150 ease-out",
         isVisible
           ? "opacity-100 scale-100 translate-y-0"
-          : "opacity-0 scale-95 translate-y-2"
+          : "opacity-0 scale-95 translate-y-2",
       )}
       style={{
         left: adjustedPosition.x,
@@ -198,14 +215,17 @@ export function SelectionContextBar({
       }}
     >
       {/* Highlight button with color picker */}
-      <DropdownMenu open={isColorPickerOpen} onOpenChange={setIsColorPickerOpen}>
+      <DropdownMenu
+        open={isColorPickerOpen}
+        onOpenChange={setIsColorPickerOpen}
+      >
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="sm"
             className={cn(
               "gap-1.5 hover:bg-muted",
-              compact ? "h-8 w-8 p-0" : "h-8 px-2"
+              compact ? "h-8 w-8 p-0" : "h-8 px-2",
             )}
             title="Surligner (H)"
           >
@@ -234,7 +254,7 @@ export function SelectionContextBar({
                   "w-7 h-7 rounded-md transition-all",
                   "hover:ring-2 hover:ring-offset-2 hover:ring-foreground/20",
                   "focus:ring-2 focus:ring-offset-2 focus:ring-primary",
-                  "relative group"
+                  "relative group",
                 )}
                 style={{
                   backgroundColor: `hsl(var(${cssVar}) / 0.9)`,
@@ -262,7 +282,7 @@ export function SelectionContextBar({
           size="sm"
           className={cn(
             "gap-1.5 hover:bg-muted",
-            compact ? "h-8 w-8 p-0" : "h-8 px-2"
+            compact ? "h-8 w-8 p-0" : "h-8 px-2",
           )}
           onClick={() => {
             onComment();
@@ -288,7 +308,7 @@ export function SelectionContextBar({
         size="sm"
         className={cn(
           "gap-1.5 hover:bg-muted",
-          compact ? "h-8 w-8 p-0" : "h-8 px-2"
+          compact ? "h-8 w-8 p-0" : "h-8 px-2",
         )}
         onClick={() => {
           onTranslate();
@@ -313,7 +333,7 @@ export function SelectionContextBar({
         size="sm"
         className={cn(
           "gap-1.5 hover:bg-muted",
-          compact ? "h-8 w-8 p-0" : "h-8 px-2"
+          compact ? "h-8 w-8 p-0" : "h-8 px-2",
         )}
         onClick={() => {
           onAsk();
@@ -355,7 +375,6 @@ export function SelectionContextBar({
       >
         <X className="h-4 w-4" />
       </Button>
-
     </div>
   );
 }

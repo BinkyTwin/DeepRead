@@ -6,7 +6,5 @@
  */
 
 export { SmartPDFViewer } from "./SmartPDFViewer";
-export { SmartTextLayer } from "./SmartTextLayer";
-export { TextBlock } from "./TextBlock";
 export { SelectionToolbar } from "./SelectionToolbar";
 export { InlineTranslation } from "./InlineTranslation";

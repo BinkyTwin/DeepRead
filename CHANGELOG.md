@@ -6,6 +6,13 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ## 2025-12-28
 
+FEATURE: Add react-pdf-highlighter integration with new PDFHighlighterViewer component
+FEATURE: Create position conversion utilities (ScaledPosition <-> HighlightRect)
+FEATURE: Create highlight adapter utilities for Supabase <-> react-pdf-highlighter
+FEATURE: Add HighlightTip component with keyboard shortcuts (H, A, T, 1-5, Escape)
+REFACTOR: Clean up broken pdf-v2 files (PDFViewer, PDFPage, empty hooks/toolbar)
+
+FEATURE: Render Mistral OCR HTML output in SmartPDFViewer (no markdown)
 FEATURE: Implement Phase 3.1 - Hybrid Canvas First rendering pipeline for SmartPDFViewer
 FEATURE: Add CanvasLayer component for PDF.js canvas rendering (visual source of truth)
 FEATURE: Add PDFTextLayer component with selectable text spans and normalized coordinates

@@ -153,9 +153,9 @@ export function SelectionToolbar({
     <div
       ref={toolbarRef}
       className={cn(
-        "fixed z-50",
-        "flex items-center gap-1 p-1",
-        "bg-card border border-border rounded-lg shadow-xl",
+        "fixed z-[110]",
+        "flex items-center gap-1 p-1.5",
+        "glass rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.4)]",
         "animate-in fade-in-0 zoom-in-95 duration-150",
       )}
       style={{
@@ -164,27 +164,27 @@ export function SelectionToolbar({
       }}
     >
       {/* Highlight button with color picker */}
-      <div className="relative">
+      <div className="relative group/highlight">
         <div className="flex items-center">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => handleHighlightClick("yellow")}
             title="Highlight (H)"
-            className="gap-1"
+            className="gap-2 h-9 px-3 hover:bg-highlight-yellow/10"
           >
             <Highlighter className="h-4 w-4 text-highlight-yellow" />
-            <span className="text-xs">Highlight</span>
+            <span className="text-xs font-semibold">Surligner</span>
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-6 -ml-2"
+            className="h-9 w-7 -ml-2 hover:bg-highlight-yellow/10"
             onClick={() => setShowColors((v) => !v)}
           >
             <ChevronDown
               className={cn(
-                "h-3 w-3 transition-transform",
+                "h-3 w-3 transition-transform text-muted-foreground",
                 showColors && "rotate-180",
               )}
             />
@@ -195,9 +195,9 @@ export function SelectionToolbar({
         {showColors && (
           <div
             className={cn(
-              "absolute top-full left-0 mt-1",
-              "flex gap-1 p-2",
-              "bg-card border border-border rounded-lg shadow-lg",
+              "absolute top-full left-0 mt-2",
+              "flex gap-2 p-2",
+              "glass rounded-xl shadow-2xl border border-white/10",
               "animate-in fade-in-0 slide-in-from-top-2",
             )}
           >
@@ -206,11 +206,11 @@ export function SelectionToolbar({
                 key={color.name}
                 onClick={() => handleHighlightClick(color.name)}
                 className={cn(
-                  "w-6 h-6 rounded-full",
+                  "w-8 h-8 rounded-full",
                   color.class,
-                  "border-2 border-transparent",
-                  "hover:border-foreground/50 transition-colors",
-                  "focus:outline-none focus:ring-2 focus:ring-primary",
+                  "border-2 border-white/20 shadow-sm",
+                  "hover:scale-110 hover:border-white/40 transition-all",
+                  "focus:outline-none focus:ring-2 focus:ring-primary/50",
                 )}
                 title={`${color.name.charAt(0).toUpperCase() + color.name.slice(1)} highlight`}
               />
@@ -220,7 +220,7 @@ export function SelectionToolbar({
       </div>
 
       {/* Divider */}
-      <div className="w-px h-6 bg-border" />
+      <div className="w-px h-6 bg-white/10 mx-1" />
 
       {/* Ask button */}
       <Button
@@ -228,10 +228,10 @@ export function SelectionToolbar({
         size="sm"
         onClick={onAsk}
         title="Ask about this (A)"
-        className="gap-1"
+        className="gap-2 h-9 px-3 hover:bg-primary/10 hover:text-primary transition-colors"
       >
-        <MessageSquare className="h-4 w-4 text-primary" />
-        <span className="text-xs">Ask</span>
+        <MessageSquare className="h-4 w-4" />
+        <span className="text-xs font-semibold">Demander</span>
       </Button>
 
       {/* Translate button */}
@@ -240,14 +240,14 @@ export function SelectionToolbar({
         size="sm"
         onClick={onTranslate}
         title="Translate (T)"
-        className="gap-1"
+        className="gap-2 h-9 px-3 hover:bg-blue-500/10 hover:text-blue-400 transition-colors"
       >
-        <Languages className="h-4 w-4 text-blue-500" />
-        <span className="text-xs">Translate</span>
+        <Languages className="h-4 w-4" />
+        <span className="text-xs font-semibold">Traduire</span>
       </Button>
 
       {/* Divider */}
-      <div className="w-px h-6 bg-border" />
+      <div className="w-px h-6 bg-white/10 mx-1" />
 
       {/* Close button */}
       <Button
@@ -255,19 +255,10 @@ export function SelectionToolbar({
         size="icon"
         onClick={onClose}
         title="Close (Esc)"
-        className="h-8 w-8"
+        className="h-9 w-9 hover:bg-white/10 rounded-full transition-colors"
       >
-        <X className="h-4 w-4" />
+        <X className="h-4 w-4 text-muted-foreground" />
       </Button>
-
-      {/* Selection preview */}
-      <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
-        <span className="text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
-          {selection.selectedText.length > 50
-            ? selection.selectedText.slice(0, 50) + "..."
-            : selection.selectedText}
-        </span>
-      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { ScaledPosition, Content } from "react-pdf-highlighter";
+import type { ScaledPosition, Content } from "react-pdf-highlighter-extended";
 import type {
   Highlight,
   HighlightColor,
@@ -15,7 +15,7 @@ import {
 } from "./position-converter";
 
 /**
- * Converts a Supabase Highlight to react-pdf-highlighter format
+ * Converts a Supabase Highlight to react-pdf-highlighter-extended format
  */
 export function supabaseToRphHighlight(
   highlight: Highlight,
@@ -31,7 +31,6 @@ export function supabaseToRphHighlight(
     id: highlight.id,
     position,
     content: { text: highlight.selectedText },
-    comment: { text: highlight.note || "", emoji: "" },
     color: highlight.color,
     startOffset: highlight.startOffset,
     endOffset: highlight.endOffset,
@@ -43,7 +42,7 @@ export function supabaseToRphHighlight(
 }
 
 /**
- * Converts multiple Supabase Highlights to react-pdf-highlighter format
+ * Converts multiple Supabase Highlights to react-pdf-highlighter-extended format
  */
 export function supabaseHighlightsToRph(
   highlights: Highlight[],
@@ -55,7 +54,7 @@ export function supabaseHighlightsToRph(
 }
 
 /**
- * Converts react-pdf-highlighter data to Supabase CreateHighlightRequest
+ * Converts react-pdf-highlighter-extended data to Supabase CreateHighlightRequest
  */
 export function rphToCreateHighlightRequest(
   position: ScaledPosition,
@@ -68,9 +67,9 @@ export function rphToCreateHighlightRequest(
 
   return {
     paperId,
-    pageNumber: position.pageNumber,
-    startOffset: 0, // Not available from react-pdf-highlighter
-    endOffset: 0, // Not available from react-pdf-highlighter
+    pageNumber: position.boundingRect.pageNumber,
+    startOffset: 0, // Not available from react-pdf-highlighter-extended
+    endOffset: 0, // Not available from react-pdf-highlighter-extended
     selectedText: content.text || "",
     rects,
     color,
@@ -101,7 +100,10 @@ export function highlightsOverlap(
   h1: DeepReadHighlight,
   h2: DeepReadHighlight,
 ): boolean {
-  if (h1.position.pageNumber !== h2.position.pageNumber) return false;
+  if (
+    h1.position.boundingRect.pageNumber !== h2.position.boundingRect.pageNumber
+  )
+    return false;
 
   const b1 = h1.position.boundingRect;
   const b2 = h2.position.boundingRect;

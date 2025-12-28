@@ -10,6 +10,8 @@ interface ChatMessageProps {
   citations?: Citation[];
   onCitationClick?: (citation: Citation) => void;
   onSaveCitation?: (citation: Citation) => void;
+  /** Image attached to user message (base64 data URL) */
+  imageData?: string;
 }
 
 export function ChatMessage({
@@ -18,6 +20,7 @@ export function ChatMessage({
   citations,
   onCitationClick,
   onSaveCitation,
+  imageData,
 }: ChatMessageProps) {
   const isUser = role === "user";
 
@@ -31,6 +34,16 @@ export function ChatMessage({
             : "bg-card border border-border",
         )}
       >
+        {/* Image preview for user messages */}
+        {imageData && isUser && (
+          <div className="mb-2 rounded overflow-hidden bg-black/10">
+            <img
+              src={imageData}
+              alt="Attached image"
+              className="max-w-full max-h-[200px] object-contain"
+            />
+          </div>
+        )}
         <p className="text-sm whitespace-pre-wrap">{content}</p>
 
         {citations && citations.length > 0 && (

@@ -70,9 +70,9 @@ export async function POST(request: NextRequest) {
 
       const model =
         body.model ||
-        settings?.openrouter_model ||
         process.env.OPENROUTER_MODEL ||
-        "google/gemini-2.0-flash-001";
+        settings?.openrouter_model ||
+        "nvidia/nemotron-nano-12b-v2-vl:free";
 
       requestBody = {
         model,

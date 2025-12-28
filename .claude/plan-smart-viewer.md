@@ -66,10 +66,10 @@ src/components/pdf-highlighter/
 - [x] Popup basique au hover (HighlightPopup)
 - [ ] Améliorer couleurs DeepRead (future iteration)
 
-### Phase 5: Citations et Navigation
-- [ ] Créer `CitationFlash.tsx` avec animation orange
-- [ ] Adapter citation → rects (réutiliser `offsetsToRects`)
-- [ ] Intégrer avec ChatPanel (onCitationClick → scroll + flash)
+### Phase 5: Citations et Navigation ✅
+- [x] Créer `CitationFlash.tsx` avec animation orange
+- [x] Adapter citation → rects (réutiliser `offsetsToRects`)
+- [x] Intégrer avec ChatPanel (onCitationClick → scroll + flash)
 
 ### Phase 6: Intégration PaperReader ✅
 - [x] Modifier `PaperReader.tsx` pour utiliser `PDFHighlighterViewer`

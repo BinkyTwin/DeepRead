@@ -3,6 +3,9 @@ export { PDFHighlighterViewer } from "./PDFHighlighterViewer";
 
 // Sub-components
 export { HighlightTip } from "./HighlightTip";
+export { CitationFlash } from "./CitationFlash";
+export { ZoomToolbar } from "./ZoomToolbar";
+export { AreaSelectionTip } from "./AreaSelectionTip";
 
 // Types
 export type {
@@ -11,6 +14,7 @@ export type {
   PDFHighlighterViewerProps,
   PageDimensions,
   PageDimensionsMap,
+  TextItemsMap,
   TipConfig,
   HighlightTipProps,
   HighlightPopupProps,

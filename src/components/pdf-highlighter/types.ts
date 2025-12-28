@@ -1,20 +1,26 @@
 import type {
-  IHighlight,
+  Highlight as ExtendedHighlight,
   ScaledPosition,
   Content,
-} from "react-pdf-highlighter";
+} from "react-pdf-highlighter-extended";
 import type {
   Highlight,
   HighlightColor,
   HighlightRect,
 } from "@/types/highlight";
 import type { Citation } from "@/types/citation";
+import type { TextItem } from "@/types/pdf";
 
 /**
- * Extension of IHighlight for DeepRead
+ * Map of page numbers to their text items (for citation -> rect conversion)
+ */
+export type TextItemsMap = Map<number, TextItem[]>;
+
+/**
+ * Extension of Highlight for DeepRead
  * Adds DeepRead-specific properties (color, offsets)
  */
-export interface DeepReadHighlight extends IHighlight {
+export interface DeepReadHighlight extends ExtendedHighlight {
   /** Highlight color */
   color: HighlightColor;
   /** Character offsets for citation compatibility */
@@ -52,6 +58,8 @@ export interface PDFHighlighterViewerProps {
   highlights?: Highlight[];
   /** Active citation to flash */
   activeCitation?: Citation | null;
+  /** Text items map for citation -> rect conversion */
+  textItemsMap?: TextItemsMap;
   /** Callback when highlight is created */
   onHighlightCreate?: (highlight: Highlight) => void;
   /** Callback when highlight is clicked */
@@ -60,10 +68,18 @@ export interface PDFHighlighterViewerProps {
   onHighlightDelete?: (highlightId: string) => void;
   /** Callback when page changes */
   onPageChange?: (page: number) => void;
-  /** Callback for "Ask" action on selection */
+  /** Callback for "Ask" action on text selection */
   onAskSelection?: (text: string, page: number) => void;
   /** Callback for "Translate" action on selection */
   onTranslateSelection?: (text: string, page: number) => void;
+  /** Callback for "Ask" action on image/area selection (base64 PNG) */
+  onAskImage?: (imageData: string, page: number) => void;
+  /** Callback when an area highlight (image) is saved */
+  onAreaHighlightCreate?: (
+    imageData: string,
+    page: number,
+    position: { x: number; y: number; width: number; height: number },
+  ) => void;
   /** Ref to scroll to a highlight (exposed for external navigation) */
   scrollToHighlightRef?: React.MutableRefObject<
     ((highlightId: string) => void) | null

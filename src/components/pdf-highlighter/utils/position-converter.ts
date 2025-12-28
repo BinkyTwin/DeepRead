@@ -1,4 +1,4 @@
-import type { ScaledPosition, Scaled } from "react-pdf-highlighter";
+import type { ScaledPosition, Scaled } from "react-pdf-highlighter-extended";
 import type { HighlightRect } from "@/types/highlight";
 import type { PageDimensions } from "../types";
 
@@ -58,7 +58,6 @@ export function rectsToScaledPosition(
   return {
     boundingRect,
     rects: scaledRects,
-    pageNumber,
   };
 }
 

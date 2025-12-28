@@ -26,18 +26,33 @@ export async function POST(request: NextRequest) {
       .update(Buffer.from(buffer))
       .digest("hex");
 
-    // Check for existing paper with same hash
+    // Check for existing paper with same hash (exclude failed uploads)
     const { data: existing } = await supabase
       .from("papers")
-      .select("id")
+      .select("id, status")
       .eq("file_hash", fileHash)
-      .single();
+      .neq("status", "error")
+      .maybeSingle();
 
     if (existing) {
       return NextResponse.json({
         paperId: existing.id,
         duplicate: true,
       });
+    }
+
+    // Clean up any previous failed upload with same hash
+    const { data: failedPapers } = await supabase
+      .from("papers")
+      .select("id, storage_path")
+      .eq("file_hash", fileHash)
+      .eq("status", "error");
+
+    if (failedPapers && failedPapers.length > 0) {
+      for (const failed of failedPapers) {
+        await supabase.storage.from("papers").remove([failed.storage_path]);
+        await supabase.from("papers").delete().eq("id", failed.id);
+      }
     }
 
     // Upload to Supabase Storage
@@ -87,13 +102,9 @@ export async function POST(request: NextRequest) {
       pages = await extractAllPages(buffer);
     } catch (extractError) {
       console.error("PDF extraction error:", extractError);
-      await supabase
-        .from("papers")
-        .update({
-          status: "error",
-          processing_error: "Failed to extract text from PDF",
-        })
-        .eq("id", paper.id);
+      // Clean up: remove storage file and DB record on extraction failure
+      await supabase.storage.from("papers").remove([storagePath]);
+      await supabase.from("papers").delete().eq("id", paper.id);
       throw new Error("Failed to extract text from PDF");
     }
 

@@ -6,6 +6,9 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ## 2025-12-28
 
+FIX: Fix PDF upload blocking - use .maybeSingle() instead of .single() to avoid 406 errors
+FIX: Auto-cleanup failed uploads - delete storage file and DB record on extraction failure
+FIX: Exclude error status papers from duplicate detection, allow re-upload of failed PDFs
 FIX: Add .npmrc with legacy-peer-deps for Vercel deployment (React 19 + react-pdf-highlighter-extended)
 FEATURE: Add resizable panels - drag handle between PDF viewer and chat panel
 FEATURE: Persist panel width preference in localStorage

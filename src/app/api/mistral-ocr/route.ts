@@ -25,7 +25,12 @@ export async function GET() {
  * POST /api/mistral-ocr
  * Process a document using Mistral OCR
  *
- * Body: { documentUrl: string, includeImages?: boolean, pages?: string }
+ * Body: {
+ *  documentUrl: string,
+ *  includeImages?: boolean,
+ *  pages?: string,
+ *  outputFormat?: "markdown" | "html"
+ * }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -41,7 +46,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { documentUrl, includeImages = true, pages } = body;
+    const {
+      documentUrl,
+      includeImages = true,
+      pages,
+      outputFormat = "html",
+    } = body;
+    const normalizedOutputFormat =
+      outputFormat === "markdown" ? "markdown" : "html";
 
     if (!documentUrl) {
       return NextResponse.json(
@@ -53,7 +65,8 @@ export async function POST(request: NextRequest) {
     // Process document with Mistral OCR
     const result = await processDocument(documentUrl, {
       includeImages,
-      tableFormat: "markdown",
+      tableFormat: normalizedOutputFormat,
+      outputFormat: normalizedOutputFormat,
       pages,
     });
 

@@ -19,13 +19,14 @@ const MISTRAL_MODEL =
  *
  * @param documentUrl - URL of the document to process
  * @param options - Additional options
- * @returns MistralOCRResponse with pages, images, and markdown
+ * @returns MistralOCRResponse with pages, images, and OCR content
  */
 export async function processDocument(
   documentUrl: string,
   options: {
     includeImages?: boolean;
     tableFormat?: "markdown" | "html";
+    outputFormat?: "markdown" | "html";
     pages?: string;
   } = {},
 ): Promise<MistralOCRResponse> {
@@ -41,6 +42,7 @@ export async function processDocument(
     },
     include_image_base64: options.includeImages ?? true,
     table_format: options.tableFormat ?? "markdown",
+    output_format: options.outputFormat,
   };
 
   if (options.pages) {

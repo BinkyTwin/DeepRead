@@ -10,6 +10,9 @@ FEATURE: Add react-pdf-highlighter integration with new PDFHighlighterViewer com
 FEATURE: Create position conversion utilities (ScaledPosition <-> HighlightRect)
 FEATURE: Create highlight adapter utilities for Supabase <-> react-pdf-highlighter
 FEATURE: Add HighlightTip component with keyboard shortcuts (H, A, T, 1-5, Escape)
+FEATURE: Integrate PDFHighlighterViewer in PaperReader with ?viewer=v3 flag
+FEATURE: Add highlight create/delete handlers for v3 viewer
+FEATURE: Connect Ask/Translate actions from v3 viewer to chat and translation modal
 REFACTOR: Clean up broken pdf-v2 files (PDFViewer, PDFPage, empty hooks/toolbar)
 
 FEATURE: Render Mistral OCR HTML output in SmartPDFViewer (no markdown)

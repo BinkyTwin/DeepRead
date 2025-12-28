@@ -30,7 +30,8 @@ export interface PageDimensions {
  */
 export interface MistralPage {
   index: number;
-  markdown: string;
+  markdown?: string;
+  html?: string;
   images: MistralImage[];
   dimensions: PageDimensions;
   tables?: unknown[];
@@ -70,5 +71,6 @@ export interface MistralOCRRequest {
   pages?: string;
   include_image_base64?: boolean;
   table_format?: "markdown" | "html";
+  output_format?: "markdown" | "html";
   image_min_size?: number;
 }

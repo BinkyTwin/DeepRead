@@ -38,45 +38,47 @@ src/components/pdf-highlighter/
 
 ## Étapes d'Implémentation
 
-### Phase 1: Setup et Types
-- [ ] Créer branche `feature/react-pdf-highlighter` depuis `feature/smart-pdf-viewer`
-- [ ] `npm install react-pdf-highlighter`
-- [ ] Créer structure `/src/components/pdf-highlighter/`
-- [ ] Créer `types.ts` avec `DeepReadHighlight`, `PDFHighlighterViewerProps`
-- [ ] Créer `utils/position-converter.ts` (ScaledPosition ↔ HighlightRect)
-- [ ] Créer `utils/highlight-adapter.ts` (Supabase ↔ react-pdf-highlighter)
+### Phase 1: Setup et Types ✅
+- [x] Créer branche `feature/react-pdf-highlighter` depuis `feature/smart-pdf-viewer`
+- [x] `npm install react-pdf-highlighter`
+- [x] Créer structure `/src/components/pdf-highlighter/`
+- [x] Créer `types.ts` avec `DeepReadHighlight`, `PDFHighlighterViewerProps`
+- [x] Créer `utils/position-converter.ts` (ScaledPosition ↔ HighlightRect)
+- [x] Créer `utils/highlight-adapter.ts` (Supabase ↔ react-pdf-highlighter)
 
-### Phase 2: Composant Principal
-- [ ] Créer `PDFHighlighterViewer.tsx` avec PdfLoader + PdfHighlighter
-- [ ] Intégrer conversion highlights Supabase existants
-- [ ] Ajouter gestion scroll (scrollRef)
-- [ ] Dynamic import avec `ssr: false` pour Next.js
+### Phase 2: Composant Principal ✅
+- [x] Créer `PDFHighlighterViewer.tsx` avec PdfLoader + PdfHighlighter
+- [x] Intégrer conversion highlights Supabase existants
+- [x] Ajouter gestion scroll (scrollRef)
+- [x] Dynamic import avec `ssr: false` pour Next.js
 
-### Phase 3: UI de Sélection
-- [ ] Créer `HighlightTip.tsx` (basé sur SelectionToolbar)
+### Phase 3: UI de Sélection ✅
+- [x] Créer `HighlightTip.tsx` (basé sur SelectionToolbar)
   - Bouton Highlight avec color picker
   - Bouton Ask (raccourci A)
   - Bouton Translate (raccourci T)
   - Raccourci Escape pour fermer
-- [ ] Intégrer `onSelectionFinished`
-- [ ] Ajouter callbacks Ask/Translate
+- [x] Intégrer `onSelectionFinished`
+- [x] Ajouter callbacks Ask/Translate
 
-### Phase 4: Rendu Personnalisé
-- [ ] Créer `HighlightRenderer.tsx` avec couleurs DeepRead
-- [ ] Créer `HighlightPopup.tsx` pour le hover
-- [ ] Intégrer `highlightTransform`
+### Phase 4: Rendu Personnalisé (simplifié)
+- [x] Utiliser rendu par défaut de react-pdf-highlighter
+- [x] Popup basique au hover (HighlightPopup)
+- [ ] Améliorer couleurs DeepRead (future iteration)
 
 ### Phase 5: Citations et Navigation
 - [ ] Créer `CitationFlash.tsx` avec animation orange
 - [ ] Adapter citation → rects (réutiliser `offsetsToRects`)
 - [ ] Intégrer avec ChatPanel (onCitationClick → scroll + flash)
 
-### Phase 6: Intégration PaperReader
-- [ ] Modifier `PaperReader.tsx` pour utiliser `PDFHighlighterViewer`
-- [ ] Connecter handlers (highlight create/click, citation navigation)
-- [ ] Connecter avec HighlightsPanel sidebar
+### Phase 6: Intégration PaperReader ✅
+- [x] Modifier `PaperReader.tsx` pour utiliser `PDFHighlighterViewer`
+- [x] Ajouter flag `?viewer=v3` pour le nouveau viewer
+- [x] Connecter handlers (highlight create/click/delete)
+- [x] Connecter Ask/Translate callbacks
+- [x] Connecter avec HighlightsPanel sidebar
 
-### Phase 7: Cleanup
+### Phase 7: Cleanup (future)
 - [ ] Supprimer anciens fichiers pdf-v2/ (SmartPDFViewer, PDFPage, layers/)
 - [ ] Mettre à jour imports
 - [ ] Mettre à jour CHANGELOG.md

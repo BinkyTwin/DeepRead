@@ -61,6 +61,27 @@ const SmartPDFViewer = dynamic(
   },
 );
 
+// Dynamic import of PDFHighlighterViewer (v3 with react-pdf-highlighter)
+const PDFHighlighterViewer = dynamic(
+  () =>
+    import("@/components/pdf-highlighter").then(
+      (mod) => mod.PDFHighlighterViewer,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex flex-col h-full bg-muted/30 p-4">
+        <div className="space-y-4">
+          <Skeleton className="h-[800px] w-full" />
+          <div className="text-center text-sm text-muted-foreground">
+            Chargement du PDF Highlighter...
+          </div>
+        </div>
+      </div>
+    ),
+  },
+);
+
 // Import SmartSelectionData type from SmartPDFViewer
 import type { SmartSelectionData } from "@/components/pdf-v2/SmartPDFViewer";
 
@@ -70,9 +91,11 @@ interface PaperReaderProps {
 }
 
 export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
-  // Check for v2 feature flag: ?viewer=v2
+  // Check for viewer feature flag: ?viewer=v2 or ?viewer=v3
   const searchParams = useSearchParams();
-  const useSmartViewer = searchParams.get("viewer") === "v2";
+  const viewerMode = searchParams.get("viewer");
+  const useSmartViewer = viewerMode === "v2";
+  const useHighlighterViewer = viewerMode === "v3";
 
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -95,6 +118,11 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
   const [pageRefsSnapshot, setPageRefsSnapshot] = useState<
     Map<number, HTMLDivElement>
   >(new Map());
+
+  // Ref for PDFHighlighterViewer scroll function
+  const scrollToHighlightRef = useRef<((highlightId: string) => void) | null>(
+    null,
+  );
 
   // Build text items map from paper pages
   const textItemsMap = useMemo(() => {
@@ -419,16 +447,26 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
   );
 
   // Handle highlight click - navigate to the highlight in the PDF
-  const handleHighlightClick = useCallback((highlight: Highlight) => {
-    // Scroll to the page containing the highlight
-    const pageElement = document.querySelector(
-      `[data-page-number="${highlight.pageNumber}"]`,
-    );
-    if (pageElement) {
-      pageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-      setCurrentPage(highlight.pageNumber);
-    }
-  }, []);
+  const handleHighlightClick = useCallback(
+    (highlight: Highlight) => {
+      // For v3 viewer, use the scrollToHighlight ref
+      if (useHighlighterViewer && scrollToHighlightRef.current) {
+        scrollToHighlightRef.current(highlight.id);
+        setCurrentPage(highlight.pageNumber);
+        return;
+      }
+
+      // For other viewers, scroll to the page containing the highlight
+      const pageElement = document.querySelector(
+        `[data-page-number="${highlight.pageNumber}"]`,
+      );
+      if (pageElement) {
+        pageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        setCurrentPage(highlight.pageNumber);
+      }
+    },
+    [useHighlighterViewer],
+  );
 
   // Handle asking AI about a highlight - set context and switch to chat tab
   const handleHighlightAskAI = useCallback((highlight: Highlight) => {
@@ -443,6 +481,43 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
   // Handle deleting a single highlight
   const handleHighlightDelete = useCallback((highlightId: string) => {
     setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
+  }, []);
+
+  // Handle highlight creation from PDFHighlighterViewer (v3)
+  const handleV3HighlightCreate = useCallback(async (highlight: Highlight) => {
+    try {
+      const response = await fetch("/api/highlights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paperId: highlight.paperId,
+          pageNumber: highlight.pageNumber,
+          startOffset: highlight.startOffset,
+          endOffset: highlight.endOffset,
+          selectedText: highlight.selectedText,
+          rects: highlight.rects,
+          color: highlight.color,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setHighlights((prev) => [...prev, data.highlight]);
+      }
+    } catch (error) {
+      console.error("Error creating highlight:", error);
+    }
+  }, []);
+
+  // Handle "Ask" from v3 viewer
+  const handleV3Ask = useCallback((text: string, page: number) => {
+    setHighlightContext({ page, text });
+    setActiveTab("chat");
+  }, []);
+
+  // Handle "Translate" from v3 viewer
+  const handleV3Translate = useCallback((text: string, page: number) => {
+    setTranslationModal({ isOpen: true, text });
   }, []);
 
   // Handle deleting all highlights
@@ -486,7 +561,21 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     <div className="h-screen flex bg-background">
       {/* PDF Viewer - 70% */}
       <div className="w-[70%] h-full border-r border-border relative">
-        {useSmartViewer ? (
+        {useHighlighterViewer ? (
+          /* PDF Highlighter Viewer v3 - react-pdf-highlighter */
+          <PDFHighlighterViewer
+            pdfUrl={pdfUrl}
+            paperId={paper.id}
+            highlights={highlights}
+            activeCitation={activeCitation}
+            onHighlightCreate={handleV3HighlightCreate}
+            onHighlightClick={handleHighlightClick}
+            onHighlightDelete={handleHighlightDelete}
+            onAskSelection={handleV3Ask}
+            onTranslateSelection={handleV3Translate}
+            scrollToHighlightRef={scrollToHighlightRef}
+          />
+        ) : useSmartViewer ? (
           /* Smart PDF Viewer v2 - Mistral OCR */
           <>
             <SmartPDFViewer

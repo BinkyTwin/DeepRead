@@ -106,6 +106,10 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     page: number;
     text: string;
   } | null>(null);
+  const [imageContext, setImageContext] = useState<{
+    imageData: string;
+    page: number;
+  } | null>(null);
   const [translationModal, setTranslationModal] = useState<{
     isOpen: boolean;
     text: string;
@@ -520,6 +524,12 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     setTranslationModal({ isOpen: true, text });
   }, []);
 
+  // Handle "Ask" for images from v3 viewer (area selection)
+  const handleV3AskImage = useCallback((imageData: string, page: number) => {
+    setImageContext({ imageData, page });
+    setActiveTab("chat");
+  }, []);
+
   // Handle deleting all highlights
   const handleDeleteAllHighlights = useCallback(() => {
     setHighlights([]);
@@ -568,11 +578,13 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
             paperId={paper.id}
             highlights={highlights}
             activeCitation={activeCitation}
+            textItemsMap={textItemsMap}
             onHighlightCreate={handleV3HighlightCreate}
             onHighlightClick={handleHighlightClick}
             onHighlightDelete={handleHighlightDelete}
             onAskSelection={handleV3Ask}
             onTranslateSelection={handleV3Translate}
+            onAskImage={handleV3AskImage}
             scrollToHighlightRef={scrollToHighlightRef}
           />
         ) : useSmartViewer ? (
@@ -660,7 +672,7 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
         <Tabs
           value={activeTab}
           onValueChange={(v) => setActiveTab(v as "chat" | "notes")}
-          className="flex-1 flex flex-col"
+          className="flex-1 flex flex-col min-h-0 overflow-hidden"
         >
           <TabsList className="grid w-full grid-cols-2 rounded-none border-b border-border bg-card">
             <TabsTrigger
@@ -679,7 +691,10 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="chat" className="flex-1 m-0 overflow-hidden flex">
+          <TabsContent
+            value="chat"
+            className="flex-1 m-0 overflow-hidden flex min-h-0"
+          >
             <ChatPanel
               paperId={paper.id}
               pages={paper.paper_pages.map((p) => ({
@@ -690,6 +705,8 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
               onSaveCitation={handleSaveCitation}
               highlightContext={highlightContext}
               onHighlightContextClear={() => setHighlightContext(null)}
+              imageContext={imageContext}
+              onImageContextClear={() => setImageContext(null)}
             />
           </TabsContent>
 

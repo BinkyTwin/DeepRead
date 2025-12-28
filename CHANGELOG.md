@@ -6,6 +6,35 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ## 2025-12-28
 
+FIX: Fix chat panel overflow - add min-h-0 and overflow-hidden for proper flexbox scrolling
+FIX: Parse JSON from markdown code blocks in vision model responses (chat API)
+KNOWN ISSUE: Area selection (Capture figure) limited by react-pdf-highlighter-extended library
+FIX: Prioritize OPENROUTER_MODEL over settings.openrouter_model in LLM routing
+CHORE: Update default OpenRouter model to google/gemma-3-27b-it:free
+FIX: Fix selection menu not showing after consecutive highlights (use ref instead of state)
+FIX: Fix area selection mode closure bug with useRef for stable enableAreaSelection callback
+FIX: Migrate from react-pdf-highlighter to react-pdf-highlighter-extended v8.1.0 to fix initialization bugs
+REFACTOR: Rewrite PDFHighlighterViewer for new library API (context-based highlight rendering)
+FIX: Update pdfjs-dist workerSrc to match resolved version 4.8.69
+FIX: Delay v3 highlight rendering until pdf.js viewer is ready to avoid getPageView crash
+FIX: Restore persistent highlight rendering and scroll-to behavior in PDFHighlighterViewer v3
+FIX: Add fit-width zoom controls with capped scale range in PDFHighlighterViewer v3
+FIX: Load actual page dimensions from PDF.js for correct highlight positioning in v3 viewer
+FIX: Use numeric values for zoom levels instead of strings in PDFHighlighterViewer
+FEATURE: Add vision support in chat for image/figure analysis (Phase 6.4)
+FEATURE: Connect PaperReader with imageContext for area selection → chat flow
+FEATURE: Add image preview in ChatPanel input and ChatMessage display
+FEATURE: Update /api/chat to support vision message format for LLMs
+FEATURE: Create AreaSelectionTip component for figure/image captures (Phase 6.3)
+FEATURE: Add area selection mode toggle in ZoomToolbar
+FEATURE: Enable area selection with Alt+drag or toggle button
+FEATURE: Create ZoomToolbar component with zoom in/out/fit-width controls (Phase 6.2)
+FEATURE: Add pdfScaleValue state for zoom control in PDFHighlighterViewer
+FIX: Render persistent highlights with correct colors in v3 viewer (Phase 6.1)
+FEATURE: Add HIGHLIGHT_COLORS map for DeepRead → CSS rgba conversion
+FEATURE: Implement CitationFlash component for visual citation highlighting in PDFHighlighterViewer
+FEATURE: Add textItemsMap prop to PDFHighlighterViewer for citation → rects conversion
+FEATURE: Connect offsetsToRects with CitationFlash for chat citations in v3 viewer
 FEATURE: Add react-pdf-highlighter integration with new PDFHighlighterViewer component
 FEATURE: Create position conversion utilities (ScaledPosition <-> HighlightRect)
 FEATURE: Create highlight adapter utilities for Supabase <-> react-pdf-highlighter

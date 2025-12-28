@@ -13,6 +13,8 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
+  /** Base64 image data URL for user messages with images */
+  imageData?: string;
 }
 
 interface ChatPanelProps {
@@ -22,6 +24,10 @@ interface ChatPanelProps {
   onSaveCitation?: (citation: Citation) => void;
   highlightContext?: { page: number; text: string } | null;
   onHighlightContextClear?: () => void;
+  /** Image context for vision analysis (base64 PNG, page number) */
+  imageContext?: { imageData: string; page: number } | null;
+  /** Clear image context after sending */
+  onImageContextClear?: () => void;
 }
 
 export function ChatPanel({
@@ -31,12 +37,15 @@ export function ChatPanel({
   onSaveCitation,
   highlightContext,
   onHighlightContextClear,
+  imageContext,
+  onImageContextClear,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change
@@ -59,17 +68,30 @@ export function ChatPanel({
     }
   }, [highlightContext]);
 
+  // Handle image context (from area selection)
+  useEffect(() => {
+    if (imageContext) {
+      setPendingImage(imageContext.imageData);
+      setInput(`Analyse cette figure/image (page ${imageContext.page}) :`);
+      onImageContextClear?.();
+    }
+  }, [imageContext, onImageContextClear]);
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
+
+    const currentImage = pendingImage;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
       content: input.trim(),
+      imageData: currentImage || undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setPendingImage(null);
     setIsLoading(true);
     setError(null);
 
@@ -83,6 +105,7 @@ export function ChatPanel({
           message: userMessage.content,
           pages,
           highlightContext: highlightContext || undefined,
+          imageData: currentImage || undefined,
         }),
       });
 
@@ -136,9 +159,9 @@ export function ChatPanel({
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-background">
+    <div className="flex flex-col h-full w-full bg-background min-h-0 overflow-hidden">
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-4 min-h-0">
         <div className="space-y-4">
           {messages.length === 0 ? (
             <div className="flex items-center gap-3 py-4 text-muted-foreground">
@@ -152,6 +175,7 @@ export function ChatPanel({
                 role={message.role}
                 content={message.content}
                 citations={message.citations}
+                imageData={message.imageData}
                 onCitationClick={onCitationClick}
                 onSaveCitation={onSaveCitation}
               />
@@ -173,12 +197,33 @@ export function ChatPanel({
 
       {/* Input */}
       <div className="p-4 border-t border-border">
+        {/* Pending image preview */}
+        {pendingImage && (
+          <div className="mb-2 relative inline-block">
+            <img
+              src={pendingImage}
+              alt="Pending image"
+              className="max-h-[80px] rounded border border-border"
+            />
+            <button
+              onClick={() => setPendingImage(null)}
+              className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs hover:bg-destructive/80"
+              title="Remove image"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <div className="flex gap-2">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Posez une question sur ce paper..."
+            placeholder={
+              pendingImage
+                ? "Posez une question sur cette image..."
+                : "Posez une question sur ce paper..."
+            }
             className="min-h-[60px] max-h-[120px] resize-none"
             disabled={isLoading}
           />

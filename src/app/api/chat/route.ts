@@ -16,7 +16,16 @@ interface ChatRequest {
     page: number;
     text: string;
   };
+  /** Base64 image data URL for vision analysis */
+  imageData?: string;
 }
+
+type MessageContent =
+  | string
+  | Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    >;
 
 /**
  * POST /api/chat
@@ -59,6 +68,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Build user message content (with optional image for vision)
+    let userMessageContent: MessageContent = body.message;
+
+    if (body.imageData) {
+      // Format for vision models
+      userMessageContent = [
+        { type: "text", text: body.message },
+        { type: "image_url", image_url: { url: body.imageData } },
+      ];
+    }
+
     // Call LLM
     const llmResponse = await fetch(
       `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/llm`,
@@ -73,11 +93,14 @@ export async function POST(request: NextRequest) {
               content: `CONTEXTE DU PAPER:\n${truncatedContext}`,
             },
             ...messageHistory,
-            { role: "user", content: body.message },
+            { role: "user", content: userMessageContent },
           ],
           temperature: 0.3,
           max_tokens: 2048,
-          response_format: { type: "json_object" },
+          // Don't force JSON for vision requests as some models may not support it
+          ...(body.imageData
+            ? {}
+            : { response_format: { type: "json_object" } }),
         }),
       },
     );
@@ -91,15 +114,23 @@ export async function POST(request: NextRequest) {
     const rawContent = llmData.choices?.[0]?.message?.content || "";
 
     // Parse LLM response
+    // For vision requests, LLM may return JSON wrapped in markdown code blocks
     let parsedResponse: CitedResponse;
     try {
+      // First try direct JSON parse
       parsedResponse = JSON.parse(rawContent);
     } catch {
-      // Fallback if JSON parsing fails
-      parsedResponse = {
-        answer: rawContent,
-        citations: [],
-      };
+      // If direct parse fails, try extracting from markdown code blocks
+      try {
+        const extractedJson = extractJsonFromMarkdown(rawContent);
+        parsedResponse = JSON.parse(extractedJson);
+      } catch {
+        // Final fallback if all parsing fails
+        parsedResponse = {
+          answer: rawContent,
+          citations: [],
+        };
+      }
     }
 
     // Validate citations
@@ -171,4 +202,21 @@ function extractAnswerFromContent(content: string): string {
   } catch {
     return content;
   }
+}
+
+/**
+ * Extract JSON from markdown code blocks or return the content as-is
+ * Handles responses like: ```json\n{...}\n``` or ```\n{...}\n```
+ */
+function extractJsonFromMarkdown(content: string): string {
+  // Try to extract JSON from markdown code blocks
+  const jsonBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?```/;
+  const match = content.match(jsonBlockRegex);
+
+  if (match) {
+    return match[1].trim();
+  }
+
+  // If no code block found, return trimmed content
+  return content.trim();
 }

@@ -13,6 +13,7 @@ import { NotesPanel } from "@/components/notes/NotesPanel";
 import { HighlightsPanel } from "@/components/highlights";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ResizeHandle } from "@/components/ui/resize-handle";
 import { MessageSquare, FileText } from "lucide-react";
 import { offsetsToRects } from "@/lib/highlight-renderer";
 import type { PaperWithPages } from "@/types/paper";
@@ -118,6 +119,21 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     InlineTranslation[]
   >([]);
   const [activeTab, setActiveTab] = useState<"chat" | "notes">("chat");
+  // Panel resize state - stored in localStorage for persistence
+  const [pdfWidthPercent, setPdfWidthPercent] = useState(70);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load saved panel width from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("deepread-pdf-width");
+    if (saved) {
+      const width = parseFloat(saved);
+      if (!isNaN(width) && width >= 50 && width <= 90) {
+        setPdfWidthPercent(width);
+      }
+    }
+  }, []);
+
   const pageRefsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const [pageRefsSnapshot, setPageRefsSnapshot] = useState<
     Map<number, HTMLDivElement>
@@ -567,10 +583,33 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
     return () => observer.disconnect();
   }, []);
 
+  // Panel resize handlers
+  const handleResize = useCallback((deltaX: number) => {
+    if (!containerRef.current) return;
+    const containerWidth = containerRef.current.offsetWidth;
+    const deltaPercent = (deltaX / containerWidth) * 100;
+    setPdfWidthPercent((prev) => {
+      const newWidth = Math.min(90, Math.max(50, prev + deltaPercent));
+      return newWidth;
+    });
+  }, []);
+
+  const handleResizeEnd = useCallback(() => {
+    localStorage.setItem("deepread-pdf-width", pdfWidthPercent.toString());
+  }, [pdfWidthPercent]);
+
+  const handleResizeReset = useCallback(() => {
+    setPdfWidthPercent(70);
+    localStorage.setItem("deepread-pdf-width", "70");
+  }, []);
+
   return (
-    <div className="h-screen flex bg-background">
-      {/* PDF Viewer - 70% */}
-      <div className="w-[70%] h-full border-r border-border relative">
+    <div ref={containerRef} className="h-screen flex bg-background">
+      {/* PDF Viewer - resizable */}
+      <div
+        className="h-full border-r border-border relative"
+        style={{ width: `${pdfWidthPercent}%` }}
+      >
         {useHighlighterViewer ? (
           /* PDF Highlighter Viewer v3 - react-pdf-highlighter */
           <PDFHighlighterViewer
@@ -655,8 +694,18 @@ export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
         />
       </div>
 
-      {/* Right Panel - 30% */}
-      <div className="w-[30%] h-full flex flex-col">
+      {/* Resize Handle */}
+      <ResizeHandle
+        onResize={handleResize}
+        onResizeEnd={handleResizeEnd}
+        onReset={handleResizeReset}
+      />
+
+      {/* Right Panel - resizable */}
+      <div
+        className="h-full flex flex-col min-h-0 overflow-hidden"
+        style={{ width: `${100 - pdfWidthPercent}%` }}
+      >
         <div className="p-3 border-b border-border bg-card">
           <h1
             className="font-semibold text-foreground truncate"

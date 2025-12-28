@@ -6,6 +6,8 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ## 2025-12-28
 
+FEATURE: Add resizable panels - drag handle between PDF viewer and chat panel
+FEATURE: Persist panel width preference in localStorage
 FIX: Fix chat panel overflow - add min-h-0 and overflow-hidden for proper flexbox scrolling
 FIX: Parse JSON from markdown code blocks in vision model responses (chat API)
 KNOWN ISSUE: Area selection (Capture figure) limited by react-pdf-highlighter-extended library

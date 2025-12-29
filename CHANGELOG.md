@@ -6,6 +6,8 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ## 2025-12-29
 
+FIX: Fix PDFViewer "Transport destroyed" crash - add mount checks and proper cleanup for PDF.js
+FIX: Fix React error #185 - defer ref state updates with requestAnimationFrame
 FIX: Disable PDFHighlighterViewer (v3) due to React 18/19 incompatibility causing infinite loops
 FIX: Fix PDF upload - use .maybeSingle() instead of .single() to avoid 406 errors
 FIX: Auto-cleanup failed uploads - delete storage file and DB record on extraction failure

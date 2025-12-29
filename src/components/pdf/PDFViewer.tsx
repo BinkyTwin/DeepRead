@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { PDFToolbar } from "./PDFToolbar";
 import { HighlightLayer } from "./HighlightLayer";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,6 +49,18 @@ export function PDFViewer({
   const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const renderTasks = useRef<Map<number, { cancel(): void }>>(new Map());
 
+  // Track component mount state to prevent state updates after unmount
+  const isMountedRef = useRef(true);
+  // Track if PDF is being destroyed to prevent concurrent operations
+  const isDestroyingRef = useRef(false);
+  // Store PDF reference for cleanup
+  const pdfRef = useRef<PDFDocumentProxy | null>(null);
+
+  // Keep pdfRef in sync with pdf state
+  useEffect(() => {
+    pdfRef.current = pdf;
+  }, [pdf]);
+
   // Load PDF.js from CDN
   useEffect(() => {
     if (window.pdfjsLib) {
@@ -83,9 +95,11 @@ export function PDFViewer({
     if (!pdfjsLoaded || !window.pdfjsLib) return;
 
     let isCancelled = false;
+    let loadedPdf: PDFDocumentProxy | null = null;
 
     const loadPdf = async () => {
       try {
+        if (!isMountedRef.current) return;
         setIsLoading(true);
         setError(null);
 
@@ -94,8 +108,9 @@ export function PDFViewer({
 
         const loadingTask = pdfjsLib.getDocument(pdfUrl);
         const pdfDoc = await loadingTask.promise;
+        loadedPdf = pdfDoc;
 
-        if (isCancelled) {
+        if (isCancelled || !isMountedRef.current) {
           pdfDoc.destroy();
           return;
         }
@@ -104,7 +119,7 @@ export function PDFViewer({
         setNumPages(pdfDoc.numPages);
         setIsLoading(false);
       } catch (err) {
-        if (!isCancelled) {
+        if (!isCancelled && isMountedRef.current) {
           console.error("Error loading PDF:", err);
           setError("Failed to load PDF");
           setIsLoading(false);
@@ -116,19 +131,46 @@ export function PDFViewer({
 
     return () => {
       isCancelled = true;
+      // Cancel all render tasks first
+      renderTasks.current.forEach((task) => {
+        try {
+          task.cancel();
+        } catch {
+          // Ignore cancel errors
+        }
+      });
+      renderTasks.current.clear();
+
+      // Destroy the PDF if it was loaded
+      if (loadedPdf) {
+        try {
+          loadedPdf.destroy();
+        } catch {
+          // Ignore destroy errors
+        }
+      }
     };
   }, [pdfUrl, pdfjsLoaded]);
 
   // Cleanup on unmount
   useEffect(() => {
-    const renderTasksSnapshot = renderTasks.current;
+    isMountedRef.current = true;
+
     return () => {
-      if (pdf) {
-        pdf.destroy();
-      }
-      renderTasksSnapshot.forEach((task) => task.cancel());
+      isMountedRef.current = false;
+      isDestroyingRef.current = true;
+
+      // Cancel all render tasks
+      renderTasks.current.forEach((task) => {
+        try {
+          task.cancel();
+        } catch {
+          // Ignore cancel errors
+        }
+      });
+      renderTasks.current.clear();
     };
-  }, [pdf]);
+  }, []);
 
   // Render text layer for a page
   const renderTextLayer = useCallback(
@@ -181,7 +223,8 @@ export function PDFViewer({
   // Render a page to canvas
   const renderPage = useCallback(
     async (pageNumber: number) => {
-      if (!pdf) return;
+      // Check if component is still mounted and PDF is valid
+      if (!pdf || !isMountedRef.current || isDestroyingRef.current) return;
 
       const canvas = canvasRefs.current.get(pageNumber);
       const container = pageRefs.current.get(pageNumber);
@@ -190,11 +233,22 @@ export function PDFViewer({
       // Cancel existing render task
       const existingTask = renderTasks.current.get(pageNumber);
       if (existingTask) {
-        existingTask.cancel();
+        try {
+          existingTask.cancel();
+        } catch {
+          // Ignore cancel errors
+        }
       }
 
       try {
+        // Double-check before async operation
+        if (!isMountedRef.current || isDestroyingRef.current) return;
+
         const page = await pdf.getPage(pageNumber);
+
+        // Check again after async operation
+        if (!isMountedRef.current || isDestroyingRef.current) return;
+
         const viewport = page.getViewport({ scale });
 
         // Use devicePixelRatio for crisp rendering on HiDPI/Retina displays
@@ -215,6 +269,9 @@ export function PDFViewer({
         const context = canvas.getContext("2d");
         if (!context) return;
 
+        // Final check before rendering
+        if (!isMountedRef.current || isDestroyingRef.current) return;
+
         const renderTask = page.render({
           canvasContext: context,
           viewport: scaledViewport,
@@ -224,17 +281,26 @@ export function PDFViewer({
 
         await renderTask.promise;
 
-        // Render text layer after canvas
-        renderTextLayer(pageNumber, viewport);
-      } catch (err) {
-        // Ignore cancelled render errors
-        if (
-          err instanceof Error &&
-          err.message.includes("Rendering cancelled")
-        ) {
-          return;
+        // Only update text layer if still mounted
+        if (isMountedRef.current && !isDestroyingRef.current) {
+          renderTextLayer(pageNumber, viewport);
         }
-        console.error("Error rendering page:", err);
+      } catch (err) {
+        // Ignore cancelled render errors and transport destroyed errors
+        if (err instanceof Error) {
+          const message = err.message.toLowerCase();
+          if (
+            message.includes("rendering cancelled") ||
+            message.includes("transport destroyed") ||
+            message.includes("worker was destroyed")
+          ) {
+            return;
+          }
+        }
+        // Only log errors if still mounted
+        if (isMountedRef.current) {
+          console.error("Error rendering page:", err);
+        }
       }
     },
     [pdf, scale, renderTextLayer],
@@ -338,7 +404,10 @@ export function PDFViewer({
     });
   }, [onTextSelect]);
 
-  // Handle page ref callback
+  // Pending ref update flag
+  const pendingRefUpdateRef = useRef(false);
+
+  // Handle page ref callback - defer state update to avoid React #185 error
   const handlePageRef = useCallback(
     (pageNumber: number) => (element: HTMLDivElement | null) => {
       const existing = pageRefs.current.get(pageNumber);
@@ -352,7 +421,17 @@ export function PDFViewer({
         return;
       }
 
-      setPageRefsSnapshot(new Map(pageRefs.current));
+      // Batch the state update using requestAnimationFrame to avoid
+      // updating state during render (React error #185)
+      if (!pendingRefUpdateRef.current) {
+        pendingRefUpdateRef.current = true;
+        requestAnimationFrame(() => {
+          if (isMountedRef.current) {
+            setPageRefsSnapshot(new Map(pageRefs.current));
+          }
+          pendingRefUpdateRef.current = false;
+        });
+      }
     },
     [],
   );

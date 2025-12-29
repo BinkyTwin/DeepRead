@@ -59,11 +59,15 @@ export function ChatMessage({
               </div>
             )}
             
-            <div className={cn(
-              "text-[14.5px] leading-relaxed prose prose-sm max-w-none",
-              isUser ? "prose-invert" : "dark:prose-invert text-foreground",
-              "prose-p:my-1 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50"
-            )}>
+            <div
+              className={cn(
+                "text-[14.5px] leading-relaxed prose prose-sm max-w-none",
+                isUser
+                  ? "text-primary-foreground prose-p:text-primary-foreground prose-strong:text-primary-foreground prose-em:text-primary-foreground prose-li:text-primary-foreground prose-a:text-primary-foreground"
+                  : "dark:prose-invert text-foreground",
+                "prose-p:my-1 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50",
+              )}
+            >
               <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                 {content}
               </ReactMarkdown>

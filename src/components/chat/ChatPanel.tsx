@@ -17,6 +17,13 @@ interface Message {
   imageData?: string;
 }
 
+interface ChatResponse {
+  error?: string;
+  content?: string;
+  citations?: Citation[];
+  conversationId?: string;
+}
+
 interface ChatPanelProps {
   paperId: string;
   pages: Array<{ pageNumber: number; textContent: string }>;
@@ -112,12 +119,31 @@ export function ChatPanel({
       // Clear highlight context after sending
       onHighlightContextClear?.();
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to send message");
+      const responseText = await response.text();
+      let data: ChatResponse;
+
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        data = {};
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            (responseText
+              ? `Failed to send message: ${responseText}`
+              : "Failed to send message"),
+        );
+      }
+
+      if (!data.content) {
+        throw new Error(
+          responseText
+            ? `Invalid chat response: ${responseText}`
+            : "Invalid chat response",
+        );
+      }
 
       // Update conversation ID
       if (data.conversationId && !conversationId) {

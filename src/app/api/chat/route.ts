@@ -80,9 +80,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Call LLM
-    const llmResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/llm`,
-      {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+    const llmResponse = await fetch(new URL("/api/llm", baseUrl), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -102,8 +102,7 @@ export async function POST(request: NextRequest) {
             ? {}
             : { response_format: { type: "json_object" } }),
         }),
-      },
-    );
+      });
 
     if (!llmResponse.ok) {
       const error = await llmResponse.json();

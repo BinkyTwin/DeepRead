@@ -93,11 +93,11 @@ interface PaperReaderProps {
 }
 
 export function PaperReader({ paper, pdfUrl }: PaperReaderProps) {
-  // Check for viewer feature flag: ?viewer=v2
+  // Viewer selection: default to SmartPDFViewer (v2) unless ?viewer=classic
   // Note: v3 (PDFHighlighterViewer) disabled due to React 18/19 compatibility
   const searchParams = useSearchParams();
   const viewerMode = searchParams.get("viewer");
-  const useSmartViewer = viewerMode === "v2";
+  const useSmartViewer = viewerMode !== "classic";
   const useHighlighterViewer = false; // Disabled: viewerMode === "v3"
 
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);

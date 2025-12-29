@@ -6,6 +6,8 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ## 2025-12-29
 
+REFACTOR: Improve chat system prompt with better structure, examples, and guidelines
+
 FIX: Handle non-JSON chat responses to prevent client parse errors
 FIX: Resolve chat LLM proxy base URL in /api/chat
 FEATURE: Restore PDFHighlighterViewer (v3) as the default reader (fallback ?viewer=v2 or ?viewer=classic)

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { extractAllPages, chunkPageContent } from "@/lib/pdf/parser";
+import {
+  MAX_PDF_SIZE_BYTES,
+  MAX_PDF_SIZE_LABEL,
+} from "@/lib/pdf/constants";
 import crypto from "crypto";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 /**
  * POST /api/papers/ingest
@@ -15,6 +22,13 @@ export async function POST(request: NextRequest) {
 
     if (!file || file.type !== "application/pdf") {
       return NextResponse.json({ error: "Invalid PDF file" }, { status: 400 });
+    }
+
+    if (file.size > MAX_PDF_SIZE_BYTES) {
+      return NextResponse.json(
+        { error: `File too large. Max size is ${MAX_PDF_SIZE_LABEL}.` },
+        { status: 413 },
+      );
     }
 
     const supabase = await createClient();
@@ -66,7 +80,46 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error("Storage upload error:", uploadError);
-      throw new Error("Failed to upload PDF to storage");
+      const uploadStatus = getStorageStatus(uploadError);
+      const uploadMessage = getStorageMessage(uploadError);
+
+      if (uploadStatus === 409) {
+        const { data: existingAfterUpload } = await supabase
+          .from("papers")
+          .select("id, status")
+          .eq("file_hash", fileHash)
+          .neq("status", "error")
+          .maybeSingle();
+
+        if (existingAfterUpload) {
+          return NextResponse.json({
+            paperId: existingAfterUpload.id,
+            duplicate: true,
+          });
+        }
+
+        const { error: upsertError } = await supabase.storage
+          .from("papers")
+          .upload(storagePath, buffer, {
+            contentType: "application/pdf",
+            upsert: true,
+          });
+
+        if (upsertError) {
+          console.error("Storage upsert error:", upsertError);
+          throw new Error(
+            `Failed to upload PDF to storage: ${getStorageMessage(
+              upsertError,
+            )}`,
+          );
+        }
+      } else {
+        throw new Error(
+          `Failed to upload PDF to storage: ${uploadMessage}${
+            uploadStatus ? ` (status ${uploadStatus})` : ""
+          }`,
+        );
+      }
     }
 
     // Extract title from filename
@@ -105,7 +158,9 @@ export async function POST(request: NextRequest) {
       // Clean up: remove storage file and DB record on extraction failure
       await supabase.storage.from("papers").remove([storagePath]);
       await supabase.from("papers").delete().eq("id", paper.id);
-      throw new Error("Failed to extract text from PDF");
+      const extractMessage =
+        extractError instanceof Error ? extractError.message : "Unknown error";
+      throw new Error(`Failed to extract text from PDF: ${extractMessage}`);
     }
 
     // Insert pages
@@ -182,4 +237,22 @@ export async function POST(request: NextRequest) {
 function extractArxivId(url: string): string | null {
   const match = url.match(/arxiv\.org\/(?:abs|pdf)\/(\d+\.\d+)/);
   return match ? match[1] : null;
+}
+
+function getStorageStatus(error: unknown): number | null {
+  if (error && typeof error === "object" && "statusCode" in error) {
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    return typeof statusCode === "number" ? statusCode : null;
+  }
+  return null;
+}
+
+function getStorageMessage(error: unknown): string {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: string }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message;
+    }
+  }
+  return "Unknown storage error";
 }

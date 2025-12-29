@@ -1,11 +1,15 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type FileRejection } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Upload, FileText, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  MAX_PDF_SIZE_BYTES,
+  MAX_PDF_SIZE_LABEL,
+} from "@/lib/pdf/constants";
 
 interface PaperUploaderProps {
   onUploadComplete?: (paperId: string) => void;
@@ -22,19 +26,46 @@ export function PaperUploader({
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const pdf = acceptedFiles[0];
-    if (pdf?.type === "application/pdf") {
-      setFile(pdf);
-      setError(null);
-    } else {
-      setError("Please upload a PDF file");
-    }
-  }, []);
+  const onDrop = useCallback(
+    (acceptedFiles: File[], fileRejections: FileRejection[]) => {
+      const rejection = fileRejections[0];
+      if (rejection) {
+        const hasSizeError = rejection.errors.some(
+          (err) => err.code === "file-too-large",
+        );
+        setError(
+          hasSizeError
+            ? `File too large. Max size is ${MAX_PDF_SIZE_LABEL}.`
+            : "Please upload a PDF file",
+        );
+        setFile(null);
+        return;
+      }
+
+      const pdf = acceptedFiles[0];
+      if (!pdf) return;
+
+      if (pdf.size > MAX_PDF_SIZE_BYTES) {
+        setError(`File too large. Max size is ${MAX_PDF_SIZE_LABEL}.`);
+        setFile(null);
+        return;
+      }
+
+      if (pdf.type === "application/pdf") {
+        setFile(pdf);
+        setError(null);
+      } else {
+        setError("Please upload a PDF file");
+        setFile(null);
+      }
+    },
+    [],
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { "application/pdf": [".pdf"] },
+    maxSize: MAX_PDF_SIZE_BYTES,
     maxFiles: 1,
     multiple: false,
   });
@@ -46,6 +77,10 @@ export function PaperUploader({
 
   const handleSubmit = async () => {
     if (!file) return;
+    if (file.size > MAX_PDF_SIZE_BYTES) {
+      setError(`File too large. Max size is ${MAX_PDF_SIZE_LABEL}.`);
+      return;
+    }
 
     setIsUploading(true);
     setError(null);

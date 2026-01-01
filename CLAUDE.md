@@ -1,8 +1,8 @@
 # CLAUDE.md - DeepRead AI Research Assistant
 
 ## Description
-Application d'assistant de recherche IA pour analyser des documents academiques (PDF).
-Objectif : importer un PDF, le lire, surligner, discuter, traduire, avec des citations precises (page + offsets).
+Application d'assistant de recherche IA pour analyser des documents académiques (PDF).
+Objectif : importer un PDF, le lire, surligner, discuter, traduire, avec des citations précises (page + offsets).
 
 ## Rules (IMPORTANT)
 
@@ -10,14 +10,16 @@ Objectif : importer un PDF, le lire, surligner, discuter, traduire, avec des cit
 2. **Follow EPCP workflow** (Explore -> Plan -> Code -> Commit) for any feature or bug fix.
 3. **Use Supabase MCP** for database operations - never write raw SQL without explaining first.
 4. **Use GitHub CLI** (gh) for issues and PRs when available.
-5. **TodoList** regarde toujours TODO.md, si la tache que tu allais effectue y figure, alors quand tu finis, note un x dessus. Si la tache n'y figure pas, écrit là, et quand tu auras finis met le x
+5. **TodoList** : regarde toujours `.claude/productbacklog.md`, si la tâche y figure, marque-la comme faite quand terminée. Si elle n'y figure pas, ajoute-la.
+6. **CHANGELOG** : Après CHAQUE modification de code, mets à jour `CHANGELOG.md` avec le format approprié (FIX:, FEATURE:, REFACTOR:, etc.)
 
 ## Stack Technique
 - **Frontend**: Next.js 14 (App Router), TypeScript strict, TailwindCSS, shadcn/ui
 - **Backend**: Next.js API Routes
 - **Database**: Supabase (PostgreSQL + Storage)
-- **LLM**: OpenRouter API (multi-modeles)
-- **PDF Processing**: pdf.js
+- **LLM**: OpenRouter API (multi-modèles)
+- **PDF Processing**: pdf.js, react-pdf-highlighter
+- **OCR**: Mistral OCR, Docling
 
 ## Commandes Essentielles
 
@@ -33,19 +35,49 @@ npm run lint         # ESLint
 ```
 deepread/
 ├── src/
-│   ├── app/               # Next.js App Router
-│   │   ├── api/           # API Routes
-│   │   ├── globals.css    # Tailwind + CSS variables
-│   │   ├── layout.tsx     # Root layout
-│   │   └── page.tsx       # Home page
+│   ├── app/                    # Next.js App Router
+│   │   ├── api/                # API Routes
+│   │   │   ├── chat/           # Chat IA avec citations
+│   │   │   ├── highlights/     # Gestion highlights
+│   │   │   ├── notes/          # Gestion notes
+│   │   │   ├── papers/ingest/  # Ingestion PDF
+│   │   │   ├── llm/            # Requêtes LLM
+│   │   │   ├── mistral-ocr/    # OCR Mistral
+│   │   │   ├── docling/        # OCR Docling
+│   │   │   ├── translate/      # Traduction
+│   │   │   └── pdf-text/       # Extraction texte PDF
+│   │   ├── library/            # Page bibliothèque
+│   │   ├── paper/[id]/         # Lecteur de document
+│   │   ├── globals.css         # Tailwind + CSS variables
+│   │   ├── layout.tsx          # Root layout
+│   │   └── page.tsx            # Home page
 │   ├── components/
-│   │   └── ui/            # shadcn/ui components
-│   └── lib/
-│       └── utils.ts       # Utility functions
-├── .claude/               # Claude Code config
-│   ├── skills/            # Custom skills
-│   └── plan.md            # Current plan
-├── CLAUDE.md              # This file
+│   │   ├── chat/               # ChatPanel, ChatMessage
+│   │   ├── highlights/         # HighlightsPanel
+│   │   ├── notes/              # NotesPanel
+│   │   ├── pdf-highlighter/    # Viewer PDF principal (react-pdf-highlighter)
+│   │   ├── upload/             # PaperUploader
+│   │   └── ui/                 # shadcn/ui primitives
+│   ├── hooks/                  # Custom React hooks
+│   ├── lib/
+│   │   ├── citations/          # Prompts et validation citations
+│   │   ├── mistral-ocr/        # Client OCR Mistral
+│   │   ├── ocr/                # Abstraction OCR
+│   │   ├── pdf/                # Parser PDF, constantes
+│   │   ├── supabase/           # Client Supabase (client + server)
+│   │   └── utils.ts            # Utilitaires
+│   └── types/                  # Types TypeScript
+│       ├── paper.ts            # Type Paper
+│       ├── highlight.ts        # Type Highlight
+│       ├── note.ts             # Type Note
+│       └── citation.ts         # Type Citation
+├── .claude/                    # Claude Code config
+│   ├── productbacklog.md       # Backlog produit
+│   └── skills/                 # Custom skills
+├── CLAUDE.md                   # This file
+├── AGENTS.md                   # Guidelines projet
+├── CHANGELOG.md                # Journal des modifications
+├── TODO.md                     # Tâches en cours
 └── package.json
 ```
 
@@ -125,16 +157,30 @@ interface Citation {
 # .env.local
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-OPENROUTER_API=
+OPENROUTER_API_KEY=
 OPENROUTER_MODEL=
+DEEPINFRA_API_KEY=
+MISTRAL_API_KEY=
+DOCLING_API_URL=
 ```
+
+## Priorités Actuelles (voir .claude/productbacklog.md)
+
+### 🔴 Haute Priorité
+- **TECH-001**: Consolidation viewer (garder uniquement react-pdf-highlighter)
+- **F1-001**: Recherche & filtres bibliothèque
+- **RAG-001**: Index sémantique des chunks pour chat IA
+
+### 🐛 Bugs Critiques
+- **BUG-001**: Suppression paper laisse des orphelins en DB
+- **BUG-002**: Erreurs Supabase invisibles côté UI
 
 ## Workflow Git
 
 - Main branch: `main`
 - Features: `feature/description`
 - Bug fixes: `fix/description`
-- Commits: messages en anglais, format conventionnel
+- Commits: Conventional Commits en anglais (`feat:`, `fix:`, `refactor:`)
 
 ## Agents Disponibles
 
@@ -166,9 +212,16 @@ Integration LLM/RAG          -> llm-architect
 Tache complexe multi-etapes  -> agent-organizer pour planifier
 ```
 
-## Quand tu es bloque
+## Quand tu es bloqué
 
 1. Lis la skill pertinente dans `.claude/skills/`
-2. Consulte l'agent approprie (voir section ci-dessus)
-3. Verifie les types
+2. Consulte l'agent approprié (voir section ci-dessus)
+3. Vérifie les types avec `npm run lint`
 4. Lance `npm run build` pour voir les erreurs
+
+## Rappels Importants
+
+- **Imports absolus** : Utiliser `@/` (ex: `@/components/ui/button`)
+- **Theme tokens** : Uniquement ceux définis dans `globals.css` (pas de couleurs arbitraires)
+- **CHANGELOG** : Mise à jour OBLIGATOIRE après chaque modification de code
+- **Productbacklog** : Vérifier et mettre à jour `.claude/productbacklog.md`

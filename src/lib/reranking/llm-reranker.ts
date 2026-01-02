@@ -4,9 +4,10 @@
  */
 
 import type { ContextChunk } from "@/types/rag";
+import { logReranking } from "@/lib/monitoring/logger";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const RERANK_MODEL = "qwen/qwen3-1.7b"; // Lightweight model for fast scoring
+const RERANK_MODEL = "google/gemma-3n-e4b-it:free"; // Lightweight model for fast scoring
 
 interface RerankResult {
   chunk: ContextChunk;
@@ -62,7 +63,17 @@ export async function rerankWithLLM(
       score: r.rerankScore,
     }));
   } catch (error) {
-    console.error("Re-ranking failed, returning original order:", error);
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[RERANK ERROR] Re-ranking failed: ${errorMsg}`);
+    console.error(`[RERANK ERROR] Using fallback: returning top ${topK} chunks without re-ranking`);
+
+    logReranking({
+      success: false,
+      error: errorMsg,
+      chunkCount: chunks.length,
+      topK
+    });
+
     return chunks.slice(0, topK);
   }
 }

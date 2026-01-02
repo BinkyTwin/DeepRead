@@ -6,6 +6,31 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ## 2026-01-02
 
+FIX: Replace reranking model with google/gemma-3n-e4b-it:free
+   - Update RERANK_MODEL in llm-reranker.ts
+   - Use verified free model for reliable LLM-based re-ranking
+
+FEATURE: Implement robust embedding queue system with Supabase and Vercel Cron
+   - Add embedding_jobs table with status tracking, retry logic, and priority
+   - Create /api/jobs/create endpoint for queue management
+   - Create /api/jobs/process endpoint for Cron-based job processing (max 5 jobs, 5min timeout)
+   - Create /api/jobs/stats endpoint for queue monitoring
+   - Update /api/papers/ingest to use queue instead of fire-and-forget fetch
+   - Configure Vercel Cron to process queue every 1 minute
+   - Implement automatic retry (max 3 attempts) with exponential backoff
+
+FEATURE: Add structured logging for RAG monitoring
+   - Create logger.ts with JSON-formatted events for Vercel Logs
+   - Add logRagQuery(), logReranking(), logEmbeddingGeneration() utilities
+   - Integrate logging in RAG search with query metrics (length, method, time, results)
+   - Integrate logging in reranker with timing and error tracking
+
+IMPROVE: Enhance RAG and re-ranking logging
+   - Add query embedding generation logs
+   - Add re-ranking start/end logs with candidate and result counts
+   - Add error messages with clear fallback indicators
+   - Log top 3 re-ranking scores for quality monitoring
+
 FIX: Sanitize PDF text content to remove null characters before DB insertion
   - Add sanitizeTextForDb() function to remove \u0000 and control characters
   - Apply sanitization to text_content and chunk content

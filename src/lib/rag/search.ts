@@ -7,6 +7,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { generateQueryEmbedding } from "@/lib/embeddings/openrouter";
 import { rerankWithLLM } from "@/lib/reranking/llm-reranker";
+import { logRagQuery, logReranking } from "@/lib/monitoring/logger";
 import type {
   ChunkSearchResponse,
   ContextChunk,
@@ -84,6 +85,7 @@ export async function searchChunks(
 
   // Generate query embedding
   const queryEmbedding = await generateQueryEmbedding(query);
+  console.log(`[RAG] Generated query embedding for: "${query.slice(0, 50)}..."`);
 
   let results: ContextChunk[];
   let searchMethod: "hybrid" | "vector" | "mmr" = "vector";
@@ -156,13 +158,34 @@ export async function searchChunks(
 
   // Apply LLM re-ranking if enabled
   if (options.useReranking && results.length > options.topK) {
+    console.log(`[RAG] Starting re-ranking: ${results.length} candidates → ${options.topK} results`);
+    const rerankStart = Date.now();
     results = await rerankWithLLM(query, results, options.topK);
+    const rerankTime = Date.now() - rerankStart;
+    console.log(`[RAG] Re-ranking completed: top scores = ${results.slice(0, 3).map(r => r.score.toFixed(3)).join(', ')}`);
+
+    logReranking({
+      paperId,
+      candidateCount: options.rerankCandidates,
+      topK: options.topK,
+      rerankTime,
+    });
   } else {
     // Just limit to topK
     results = results.slice(0, options.topK);
   }
 
   const searchTime = Date.now() - startTime;
+
+  logRagQuery({
+    paperId,
+    queryLength: query.length,
+    searchMethod,
+    resultCount: results.length,
+    searchTime,
+    topK: options.topK,
+    useReranking: options.useReranking,
+  });
 
   return {
     chunks: results,

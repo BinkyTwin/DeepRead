@@ -6,6 +6,11 @@ This file tracks main tasks completed by AI agents. Only significant changes are
 
 ## 2026-01-02
 
+FIX: Sanitize PDF text content to remove null characters before DB insertion
+  - Add sanitizeTextForDb() function to remove \u0000 and control characters
+  - Apply sanitization to text_content and chunk content
+  - Fixes PostgreSQL error "unsupported Unicode escape sequence"
+
 FIX: Refactor RAG search to use direct function calls instead of HTTP fetch
   - Extract search logic into src/lib/rag/search.ts module
   - Update /api/chat to call searchChunks() directly

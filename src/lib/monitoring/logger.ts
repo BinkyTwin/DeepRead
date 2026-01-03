@@ -36,16 +36,4 @@ export function logReranking(context: LogContext) {
   });
 }
 
-export function logEmbeddingGeneration(context: LogContext) {
-  logEvent('info', 'embedding_generation', {
-    ...context,
-    component: 'embeddings'
-  });
-}
 
-export function logQueueAction(context: LogContext) {
-  logEvent('info', 'queue_action', {
-    ...context,
-    component: 'queue'
-  });
-}

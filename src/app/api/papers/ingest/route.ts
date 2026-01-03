@@ -186,16 +186,7 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", paper.id);
 
-    // Add to embedding queue
-    const queueResponse = await fetch(new URL("/api/jobs/create", request.url), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paperId: paper.id, priority: 0 }),
-    });
 
-    if (!queueResponse.ok) {
-      console.error("Failed to add to embedding queue:", await queueResponse.text());
-    }
 
     return NextResponse.json({
       paperId: paper.id,

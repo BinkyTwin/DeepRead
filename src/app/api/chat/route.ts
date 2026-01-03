@@ -47,6 +47,35 @@ export async function POST(request: NextRequest) {
     let context: string;
     let ragInfo = "";
 
+    // Lazy embeddings trigger: générer les embeddings manquants si nécessaire
+    if (useRag) {
+      const { data: paper } = await supabase
+        .from("papers")
+        .select("embedding_status")
+        .eq("id", body.paperId)
+        .single();
+
+      const needsEmbeddings = paper?.embedding_status === "pending" || paper?.embedding_status === "error";
+
+      if (needsEmbeddings) {
+        console.log(`[LAZY EMBEDDINGS] Triggering generation for paper ${body.paperId}...`);
+
+        // Déclenchement asynchrone (non-bloquant) pour ne pas bloquer la requête
+        fetch(new URL("/api/embeddings/generate", request.url), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paperId: body.paperId }),
+        }).catch((err) => {
+          console.error("[LAZY EMBEDDINGS] Failed to trigger generation:", err);
+        });
+
+        // Continue avec le fallback (pages) pour cette requête
+        // La prochaine requête utilisera les embeddings générés
+        console.log("[LAZY EMBEDDINGS] Using page fallback for this request");
+        ragInfo = "[RAG: lazy embeddings generating, using page fallback]";
+      }
+    }
+
     if (useRag) {
       // Use RAG-based retrieval for focused context (direct function call, no HTTP)
       try {

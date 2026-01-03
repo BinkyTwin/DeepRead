@@ -1,9 +1,71 @@
 /**
  * Lock manager pour éviter la génération d'embeddings en parallèle pour un même paper
  * Version simplifiée: utilise embedding_status comme lock (processing = en cours)
+ * AVEC TIMEOUT pour éviter les locks bloqués indéfiniment
  */
 
 import { createClient } from "@/lib/supabase/server";
+
+const LOCK_TIMEOUT_MINUTES = 30;
+
+/**
+ * Vérifie si un lock est expiré (en cours depuis trop longtemps)
+ * @param paperId - ID du paper
+ * @returns true si lock doit être reseté
+ */
+export async function isLockExpired(paperId: string): Promise<boolean> {
+  const supabase = await createClient();
+
+  try {
+    const { data: paper } = await supabase
+      .from("papers")
+      .select("embedding_status, created_at, updated_at")
+      .eq("id", paperId)
+      .maybeSingle();
+
+    if (!paper) return false;
+
+    // Si statut est "processing", vérifier depuis combien de temps
+    if (paper.embedding_status === "processing") {
+      const processingTime = new Date(paper.updated_at || paper.created_at).getTime();
+      const currentTime = Date.now();
+      const elapsedMinutes = (currentTime - processingTime) / (1000 * 60);
+
+      const isExpired = elapsedMinutes > LOCK_TIMEOUT_MINUTES;
+      if (isExpired) {
+        console.log(
+          `[LOCK] ⚠️  Lock expired for paper ${paperId} (${elapsedMinutes.toFixed(1)}min > ${LOCK_TIMEOUT_MINUTES}min), resetting to error`
+        );
+      }
+
+      return isExpired;
+    }
+
+    return false;
+  } catch (error) {
+    console.error(`[LOCK] Failed to check lock expiration for paper ${paperId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Reset un lock expiré ou corrompu
+ * @param paperId - ID du paper
+ */
+export async function resetExpiredLock(paperId: string): Promise<void> {
+  const supabase = await createClient();
+
+  try {
+    await supabase
+      .from("papers")
+      .update({ embedding_status: "error" })
+      .eq("id", paperId);
+
+    console.log(`[LOCK] Reset expired lock for paper ${paperId} to error status`);
+  } catch (error) {
+    console.error(`[LOCK] Failed to reset lock for paper ${paperId}:`, error);
+  }
+}
 
 /**
  * Tente d'acquérir un lock pour un paper
@@ -14,6 +76,14 @@ export async function acquireLock(paperId: string): Promise<boolean> {
   const supabase = await createClient();
 
   try {
+    // Vérifier si le lock actuel est expiré avant d'acquérir un nouveau
+    const lockExpired = await isLockExpired(paperId);
+    if (lockExpired) {
+      await resetExpiredLock(paperId);
+    // Attendre un petit instant que le reset soit effectif
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
     // Marquer le paper comme "processing" = lock
     const { data: paper, error } = await supabase
       .from("papers")
@@ -25,6 +95,27 @@ export async function acquireLock(paperId: string): Promise<boolean> {
     // Si erreur PGRST116 = pas de ligne modifiée (déjà "processing")
     if (error) {
       if (error.code === "PGRST116") {
+        // Déjà "processing" = lock existe
+        // Vérifier si expiré pour permettre un retry
+        const expired = await isLockExpired(paperId);
+        if (expired) {
+          console.log(`[LOCK] Resetting expired lock for paper ${paperId}`);
+          await resetExpiredLock(paperId);
+          // Retenter après reset
+          const { data: retryPaper } = await supabase
+            .from("papers")
+            .update({ embedding_status: "processing" })
+            .eq("id", paperId)
+            .select("embedding_status")
+            .maybeSingle();
+
+          const wasProcessingNow = retryPaper?.embedding_status === "processing";
+          if (!wasProcessingNow) {
+            console.log(`[LOCK] ✅ Acquired lock after reset for paper ${paperId}`);
+            return true;
+          }
+        }
+
         console.log(`[LOCK] Paper ${paperId} is already locked (status already processing)`);
         return false;
       }
@@ -34,7 +125,7 @@ export async function acquireLock(paperId: string): Promise<boolean> {
     // Si le statut actuel n'était pas "processing", on a acquéri le lock
     const wasProcessing = paper?.embedding_status === "processing";
     if (!wasProcessing) {
-      console.log(`[LOCK] Acquired lock for paper ${paperId} (status changed to processing)`);
+      console.log(`[LOCK] ✅ Acquired lock for paper ${paperId} (status changed to processing)`);
       return true;
     }
 
@@ -42,7 +133,7 @@ export async function acquireLock(paperId: string): Promise<boolean> {
     console.log(`[LOCK] Paper ${paperId} is already locked (status already processing)`);
     return false;
   } catch (error) {
-    console.error(`[LOCK] Failed to acquire lock for paper ${paperId}:`, error);
+    console.error(`[LOCK] ❌ Failed to acquire lock for paper ${paperId}:`, error);
     throw error;
   }
 }
